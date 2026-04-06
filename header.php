@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes_functions.php';
 $paginaAtual = basename($_SERVER['PHP_SELF']);
 $flashData = flash();
+$logado = usuarioLogado() || administradorLogado();
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -28,17 +29,19 @@ $flashData = flash();
     <a href="acompanhar.php" class="topbar-link <?= topoAtivo($paginaAtual, 'acompanhar.php') ?>"><i class="fa-solid fa-magnifying-glass"></i> Acompanhar</a>
     <?php if (usuarioLogado()): ?>
       <a href="minha_conta.php" class="topbar-link <?= topoAtivo($paginaAtual, 'minha_conta.php') ?>"><i class="fa-solid fa-user"></i> Minha conta</a>
-    <?php else: ?>
+    <?php elseif (!administradorLogado()): ?>
       <a href="login.php" class="topbar-link <?= topoAtivo($paginaAtual, 'login.php') ?>"><i class="fa-solid fa-right-to-bracket"></i> Login</a>
     <?php endif; ?>
-    <a href="adm.php" class="topbar-link <?= topoAtivo($paginaAtual, 'adm.php') ?>"><i class="fa-solid fa-shield-halved"></i> Painel do Grêmio</a>
+    <?php if (administradorLogado()): ?>
+      <a href="adm.php" class="topbar-link <?= topoAtivo($paginaAtual, 'adm.php') ?>"><i class="fa-solid fa-shield-halved"></i> Painel do Grêmio</a>
+    <?php endif; ?>
   </nav>
   <div class="topbar-actions">
     <?php if (administradorLogado()): ?>
       <a href="adm.php" class="topbar-btn topbar-btn-login"><i class="fa-solid fa-user-shield"></i> <span><?= e($_SESSION['admin']['nome']) ?></span></a>
       <a href="logout.php" class="topbar-btn topbar-btn-cadastro"><i class="fa-solid fa-right-from-bracket"></i> <span>Sair</span></a>
     <?php elseif (usuarioLogado()): ?>
-      <a href="minha_conta.php" class="topbar-btn topbar-btn-login"><i class="fa-solid fa-user"></i> <span>Minha conta</span></a>
+      <a href="minha_conta.php" class="topbar-btn topbar-btn-login"><i class="fa-solid fa-user"></i> <span><?= e($_SESSION['usuario']['nome']) ?></span></a>
       <a href="logout.php" class="topbar-btn topbar-btn-cadastro"><i class="fa-solid fa-right-from-bracket"></i> <span>Logout</span></a>
     <?php else: ?>
       <a href="login.php" class="topbar-btn topbar-btn-login"><i class="fa-solid fa-right-to-bracket"></i> <span>Login</span></a>
@@ -62,17 +65,21 @@ $flashData = flash();
     <a href="sobre.php" class="drawer-item <?= topoAtivo($paginaAtual, 'sobre.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-school"></i></span><span class="drawer-item-label">Sobre a Escola</span></a>
     <a href="manifestacao.php" class="drawer-item <?= topoAtivo($paginaAtual, 'manifestacao.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-paper-plane"></i></span><span class="drawer-item-label">Fazer Manifestação</span><span class="drawer-badge">Novo</span></a>
     <a href="acompanhar.php" class="drawer-item <?= topoAtivo($paginaAtual, 'acompanhar.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-magnifying-glass"></i></span><span class="drawer-item-label">Acompanhar Protocolo</span></a>
+
     <?php if (usuarioLogado()): ?>
       <a href="minha_conta.php" class="drawer-item <?= topoAtivo($paginaAtual, 'minha_conta.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-user"></i></span><span class="drawer-item-label">Minha conta</span></a>
       <a href="minha_conta.php#manifestacoes" class="drawer-item"><span class="drawer-item-icon"><i class="fa-solid fa-list-check"></i></span><span class="drawer-item-label">Minhas manifestações</span></a>
       <a href="logout.php" class="drawer-item"><span class="drawer-item-icon"><i class="fa-solid fa-right-from-bracket"></i></span><span class="drawer-item-label">Logout</span></a>
+    <?php elseif (administradorLogado()): ?>
+      <div class="drawer-section-label">ADMINISTRAÇÃO</div>
+      <a href="adm.php" class="drawer-item <?= topoAtivo($paginaAtual, 'adm.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-shield-halved"></i></span><span class="drawer-item-label">Painel do Grêmio</span></a>
+      <a href="logout.php" class="drawer-item"><span class="drawer-item-icon"><i class="fa-solid fa-right-from-bracket"></i></span><span class="drawer-item-label">Sair</span></a>
     <?php else: ?>
       <div class="drawer-section-label">ACESSO</div>
       <a href="login.php" class="drawer-item <?= topoAtivo($paginaAtual, 'login.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-right-to-bracket"></i></span><span class="drawer-item-label">Login</span></a>
+      <a href="login.php#cadastro" class="drawer-item"><span class="drawer-item-icon"><i class="fa-solid fa-user-plus"></i></span><span class="drawer-item-label">Cadastrar-se</span></a>
       <a href="forgot_password.php" class="drawer-item <?= topoAtivo($paginaAtual, 'forgot_password.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-key"></i></span><span class="drawer-item-label">Esqueci a senha</span></a>
     <?php endif; ?>
-    <div class="drawer-section-label">ADMINISTRAÇÃO</div>
-    <a href="adm.php" class="drawer-item <?= topoAtivo($paginaAtual, 'adm.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-shield-halved"></i></span><span class="drawer-item-label">Painel do Grêmio</span></a>
   </nav>
   <div class="drawer-footer">
     <div class="drawer-contact"><i class="fa-solid fa-phone"></i><span>(88) 93677-4295</span></div>

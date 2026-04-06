@@ -15,8 +15,15 @@ require_once __DIR__ . '/header.php';
       <p class="hero-desc">A Ouvidoria do Grêmio Escolar da EEEP Dom Walfrido Teixeira Vieira é um espaço de escuta, participação e melhoria da vida estudantil.</p>
       <div class="hero-actions">
         <a href="manifestacao.php" class="btn-primary-main"><i class="fa-solid fa-paper-plane"></i> Fazer Manifestação</a>
-        <a href="login.php" class="btn-secondary-main"><i class="fa-solid fa-right-to-bracket"></i> Login</a>
-        <a href="forgot_password.php" class="btn-outline-main"><i class="fa-solid fa-key"></i> Esqueci a senha</a>
+        <?php if (administradorLogado()): ?>
+          <a href="adm.php" class="btn-secondary-main"><i class="fa-solid fa-shield-halved"></i> Painel do Grêmio</a>
+        <?php elseif (usuarioLogado()): ?>
+          <a href="minha_conta.php" class="btn-secondary-main"><i class="fa-solid fa-user"></i> Minha conta</a>
+          <a href="acompanhar.php" class="btn-outline-main"><i class="fa-solid fa-magnifying-glass"></i> Acompanhar</a>
+        <?php else: ?>
+          <a href="login.php" class="btn-secondary-main"><i class="fa-solid fa-right-to-bracket"></i> Login</a>
+          <a href="forgot_password.php" class="btn-outline-main"><i class="fa-solid fa-key"></i> Esqueci a senha</a>
+        <?php endif; ?>
       </div>
     </div>
     <div class="hero-logos-block">

@@ -1,4 +1,4 @@
-<?php ?>
+
   <footer class="main-footer">
     <div class="footer-logos">
       <img src="Logo da escola.png" alt="EEEP Dom Walfrido" onerror="this.style.display='none'">
