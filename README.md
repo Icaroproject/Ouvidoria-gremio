@@ -49,6 +49,7 @@ O sistema foi criado com o objetivo de:
 4. Importe o banco de dados no phpMyAdmin
 5. Inicie o Apache e MySQL
 6. Acesse: http://localhost/gremio_ouvidoria_final
+7. email do gremio = admin@gremio.com, senha = admin123
 
 📌 Status do projeto
 
