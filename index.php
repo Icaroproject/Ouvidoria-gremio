@@ -1,6 +1,6 @@
 <?php
 $tituloPagina = 'Ouvidoria do Grêmio Escolar — Dom Walfrido';
-require_once __DIR__ . '/header.php';
+require_once __DIR__ . '/includes/header.php';
 ?>
 <section class="hero">
   <div class="hero-bg-shapes">
@@ -14,23 +14,23 @@ require_once __DIR__ . '/header.php';
       <h1 class="hero-title">Sua voz <br><em>fortalece</em> a<br>escola.</h1>
       <p class="hero-desc">A Ouvidoria do Grêmio Escolar da EEEP Dom Walfrido Teixeira Vieira é um espaço de escuta, participação e melhoria da vida estudantil.</p>
       <div class="hero-actions">
-        <a href="manifestacao.php" class="btn-primary-main"><i class="fa-solid fa-paper-plane"></i> Fazer Manifestação</a>
+        <a href="<?= $_base ?>app/manifestacao.php" class="btn-primary-main"><i class="fa-solid fa-paper-plane"></i> Fazer Manifestação</a>
         <?php if (administradorLogado()): ?>
-          <a href="adm.php" class="btn-secondary-main"><i class="fa-solid fa-shield-halved"></i> Painel do Grêmio</a>
+          <a href="<?= $_base ?>app/painel/dashboard.php" class="btn-secondary-main"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
         <?php elseif (usuarioLogado()): ?>
-          <a href="minha_conta.php" class="btn-secondary-main"><i class="fa-solid fa-user"></i> Minha conta</a>
-          <a href="acompanhar.php" class="btn-outline-main"><i class="fa-solid fa-magnifying-glass"></i> Acompanhar</a>
+          <a href="<?= $_base ?>app/painel/minha_conta.php" class="btn-secondary-main"><i class="fa-solid fa-user"></i> Minha conta</a>
+          <a href="<?= $_base ?>app/acompanhar.php" class="btn-outline-main"><i class="fa-solid fa-magnifying-glass"></i> Acompanhar</a>
         <?php else: ?>
-          <a href="login.php" class="btn-secondary-main"><i class="fa-solid fa-right-to-bracket"></i> Login</a>
-          <a href="forgot_password.php" class="btn-outline-main"><i class="fa-solid fa-key"></i> Esqueci a senha</a>
+          <a href="<?= $_base ?>app/auth/login.php" class="btn-secondary-main"><i class="fa-solid fa-right-to-bracket"></i> Login</a>
+          <a href="<?= $_base ?>app/auth/forgot_password.php" class="btn-outline-main"><i class="fa-solid fa-key"></i> Esqueci a senha</a>
         <?php endif; ?>
       </div>
     </div>
     <div class="hero-logos-block">
       <div class="logos-frame">
-        <img src="Logo da escola.png" alt="EEEP Dom Walfrido" class="hero-logo-escola">
+        <img src="<?= $_base ?>assets/images/logo-escola.png" alt="EEEP Dom Walfrido" class="hero-logo-escola">
         <div class="logos-divider"></div>
-        <img src="Negocio do ceara.png" alt="Governo Ceará" class="hero-logo-ceara">
+        <img src="<?= $_base ?>assets/images/logo-ceara.png" alt="Governo Ceará" class="hero-logo-ceara">
       </div>
       <div class="hero-card-float">
         <div class="float-item"><i class="fa-solid fa-comments"></i><div><strong>Escuta ativa</strong><span>Espaço para sugestões, elogios e denúncias</span></div></div>
@@ -48,10 +48,10 @@ require_once __DIR__ . '/header.php';
     <p class="section-desc">Toda manifestação enviada ao grêmio é registrada para análise e encaminhamento.</p>
   </div>
   <div class="tipos-grid">
-    <div class="tipo-card tipo-sugestao"><div class="tipo-icon"><i class="fa-solid fa-lightbulb"></i></div><h3>Sugestão</h3><p>Compartilhe ideias para melhorar eventos, espaços, comunicação e ações estudantis.</p><a href="manifestacao.php?tipo=sugestao" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
-    <div class="tipo-card tipo-elogio"><div class="tipo-icon"><i class="fa-solid fa-hands-clapping"></i></div><h3>Elogio</h3><p>Valorize projetos, professores, representantes e atitudes positivas na escola.</p><a href="manifestacao.php?tipo=elogio" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
-    <div class="tipo-card tipo-reclamacao"><div class="tipo-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h3>Reclamação</h3><p>Informe situações que precisam de correção, apoio ou mediação.</p><a href="manifestacao.php?tipo=reclamacao" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
-    <div class="tipo-card tipo-denuncia"><div class="tipo-icon"><i class="fa-solid fa-scale-balanced"></i></div><h3>Denúncia</h3><p>Relate fatos sensíveis com seriedade. O painel do grêmio exige autenticação para análise.</p><a href="manifestacao.php?tipo=denuncia" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
+    <div class="tipo-card tipo-sugestao"><div class="tipo-icon"><i class="fa-solid fa-lightbulb"></i></div><h3>Sugestão</h3><p>Compartilhe ideias para melhorar eventos, espaços, comunicação e ações estudantis.</p><a href="<?= $_base ?>app/manifestacao.php?tipo=sugestao" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
+    <div class="tipo-card tipo-elogio"><div class="tipo-icon"><i class="fa-solid fa-hands-clapping"></i></div><h3>Elogio</h3><p>Valorize projetos, professores, representantes e atitudes positivas na escola.</p><a href="<?= $_base ?>app/manifestacao.php?tipo=elogio" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
+    <div class="tipo-card tipo-reclamacao"><div class="tipo-icon"><i class="fa-solid fa-triangle-exclamation"></i></div><h3>Reclamação</h3><p>Informe situações que precisam de correção, apoio ou mediação.</p><a href="<?= $_base ?>app/manifestacao.php?tipo=reclamacao" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
+    <div class="tipo-card tipo-denuncia"><div class="tipo-icon"><i class="fa-solid fa-scale-balanced"></i></div><h3>Denúncia</h3><p>Relate fatos sensíveis com seriedade. O painel do grêmio exige autenticação para análise.</p><a href="<?= $_base ?>app/manifestacao.php?tipo=denuncia" class="tipo-link">Registrar <i class="fa-solid fa-arrow-right"></i></a></div>
   </div>
 </section>
-<?php require_once __DIR__ . '/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
