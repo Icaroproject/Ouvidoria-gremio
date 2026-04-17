@@ -5,52 +5,55 @@ $token = $_GET['token'] ?? ($_POST['token'] ?? '');
 
 if ($token === '') {
     flash('erro', 'Token inválido.');
-    header('Location: /projeto_final/app/auth/login.php');
+    header('Location: ' . BASE_URL . 'app/auth/login.php');
     exit;
 }
 
-$pdo = conectarPDO();
+$pdo   = conectarPDO();
 $reset = buscarResetValidoPorToken($pdo, $token);
 
 if (!$reset) {
     flash('erro', 'Link inválido ou expirado.');
-    header('Location: /projeto_final/app/auth/login.php');
+    header('Location: ' . BASE_URL . 'app/auth/login.php');
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $novaSenha = trim($_POST['nova_senha'] ?? '');
+    validarCSRF();
+
+    $novaSenha      = trim($_POST['nova_senha']      ?? '');
     $confirmarSenha = trim($_POST['confirmar_senha'] ?? '');
 
     if ($novaSenha === '' || $confirmarSenha === '') {
         flash('erro', 'Preencha os dois campos de senha.');
-        header('Location: /projeto_final/app/auth/reset_password.php?token=' . urlencode($token));
+        header('Location: ' . BASE_URL . 'app/auth/reset_password.php?token=' . urlencode($token));
         exit;
     }
 
     if (mb_strlen($novaSenha) < 8) {
         flash('erro', 'A nova senha deve ter pelo menos 8 caracteres.');
-        header('Location: /projeto_final/app/auth/reset_password.php?token=' . urlencode($token));
+        header('Location: ' . BASE_URL . 'app/auth/reset_password.php?token=' . urlencode($token));
         exit;
     }
 
     if ($novaSenha !== $confirmarSenha) {
         flash('erro', 'As senhas não coincidem.');
-        header('Location: /projeto_final/app/auth/reset_password.php?token=' . urlencode($token));
+        header('Location: ' . BASE_URL . 'app/auth/reset_password.php?token=' . urlencode($token));
         exit;
     }
 
     try {
         $novaSenhaHash = password_hash($novaSenha, PASSWORD_DEFAULT);
-        atualizarSenhaPorEmail($pdo, $reset['email'], $novaSenhaHash);
-        marcarTokenComoUsado($pdo, (int) $reset['id']);
+        // Usa a função corrigida: transação + atualiza apenas a tabela certa
+        atualizarSenhaPorReset($pdo, $reset, $novaSenhaHash);
 
         flash('sucesso', 'Senha redefinida com sucesso. Agora você já pode fazer login.');
-        header('Location: /projeto_final/app/auth/login.php');
+        header('Location: ' . BASE_URL . 'app/auth/login.php');
         exit;
     } catch (PDOException $e) {
-        flash('erro', 'Não foi possível atualizar a senha.');
-        header('Location: /projeto_final/app/auth/reset_password.php?token=' . urlencode($token));
+        error_log('[reset_password] ' . $e->getMessage());
+        flash('erro', 'Não foi possível atualizar a senha. Tente novamente.');
+        header('Location: ' . BASE_URL . 'app/auth/reset_password.php?token=' . urlencode($token));
         exit;
     }
 }
@@ -73,6 +76,7 @@ require_once __DIR__ . '/../../includes/header.php';
       <p class="auth-sub">Escolha uma senha forte e confirme abaixo.</p>
 
       <form method="post" autocomplete="off" id="formResetPassword">
+        <?= csrfInput() ?>
         <input type="hidden" name="token" value="<?= e($token) ?>">
 
         <div class="form-group">
@@ -85,12 +89,20 @@ require_once __DIR__ . '/../../includes/header.php';
           <input type="password" name="confirmar_senha" id="confirmar_senha" class="form-control" placeholder="Repita a nova senha" required>
         </div>
 
-        <button type="submit" class="btn-submit">
+        <button type="submit" class="btn-submit" id="btnReset">
           <i class="fa-solid fa-key"></i> Salvar nova senha
         </button>
       </form>
     </div>
   </div>
 </section>
+
+<script>
+document.getElementById('formResetPassword').addEventListener('submit', function() {
+  const btn = document.getElementById('btnReset');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Salvando...';
+});
+</script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

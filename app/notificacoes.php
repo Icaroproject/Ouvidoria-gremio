@@ -9,7 +9,7 @@ $ehAdmin   = administradorLogado();
 
 if (!$ehUsuario && !$ehAdmin) {
     flash('erro', 'Faça login para ver suas notificações.');
-    header('Location: /projeto_final/app/auth/login.php');
+    header('Location: ' . BASE_URL . 'app/auth/login.php');
     exit;
 }
 
@@ -31,7 +31,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === '1') {
 if (isset($_GET['marcar_lidas'])) {
     marcarNotificacoesLidas($pdo, $coluna, $idPessoa);
     if (isset($_GET['ajax'])) { echo json_encode(['ok'=>true]); exit; }
-    header('Location: /projeto_final/app/notificacoes.php');
+    header('Location: ' . BASE_URL . 'app/notificacoes.php');
     exit;
 }
 

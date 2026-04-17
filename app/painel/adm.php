@@ -8,6 +8,7 @@ garantirTabelasExtras($pdo);
 
 // ── POST handler ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['acao'])) {
+    validarCSRF();
 
     // Atualizar status + feedback
     if ($_POST['acao'] === 'atualizar_manifestacao') {
@@ -88,8 +89,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['acao'])) {
     if ($_POST['acao'] === 'arquivar') {
         $idM = (int)($_POST['id_manifest'] ?? 0);
         if ($idM > 0) {
-            // Adiciona coluna arquivada se não existir
-            try { $pdo->exec("ALTER TABLE tbmanifest ADD COLUMN arquivada TINYINT(1) NOT NULL DEFAULT 0"); } catch (\PDOException $e) {}
             $pdo->prepare("UPDATE tbmanifest SET arquivada=1 WHERE IDmanifest=:id")->execute([':id'=>$idM]);
             flash('sucesso', 'Manifestação arquivada.');
         }
@@ -150,9 +149,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['acao'])) {
         exit;
     }
 }
-
-// ── Garante coluna arquivada ──────────────────────────────────────────────
-try { $pdo->exec("ALTER TABLE tbmanifest ADD COLUMN arquivada TINYINT(1) NOT NULL DEFAULT 0"); } catch (\PDOException $e) {}
 
 // ── Exportar CSV ──────────────────────────────────────────────────────────
 if (isset($_GET['exportar_csv'])) {
@@ -382,6 +378,7 @@ require_once __DIR__ . '/../../includes/header.php';
               <!-- Ações -->
               <?php if (!($m['arquivada'] ?? 0)): ?>
               <form method="post" class="d-inline" onsubmit="return confirm('Arquivar esta manifestação?')">
+                <?= csrfInput() ?>
                 <input type="hidden" name="acao" value="arquivar">
                 <input type="hidden" name="id_manifest" value="<?= $idM ?>">
                 <button type="submit" class="btn btn-sm btn-outline-secondary" title="Arquivar" style="border-radius:8px;padding:3px 8px">
@@ -390,6 +387,7 @@ require_once __DIR__ . '/../../includes/header.php';
               </form>
               <?php else: ?>
               <form method="post" class="d-inline">
+                <?= csrfInput() ?>
                 <input type="hidden" name="acao" value="desarquivar">
                 <input type="hidden" name="id_manifest" value="<?= $idM ?>">
                 <button type="submit" class="btn btn-sm btn-outline-success" title="Restaurar" style="border-radius:8px;padding:3px 8px">
@@ -398,6 +396,7 @@ require_once __DIR__ . '/../../includes/header.php';
               </form>
               <?php endif; ?>
               <form method="post" class="d-inline" onsubmit="return confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')">
+                <?= csrfInput() ?>
                 <input type="hidden" name="acao" value="excluir">
                 <input type="hidden" name="id_manifest" value="<?= $idM ?>">
                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir" style="border-radius:8px;padding:3px 8px">
@@ -501,6 +500,7 @@ require_once __DIR__ . '/../../includes/header.php';
                   </div>
                   <!-- Input rápido de resposta -->
                   <form method="post" class="d-flex gap-2 align-items-end">
+                    <?= csrfInput() ?>
                     <input type="hidden" name="acao" value="responder">
                     <input type="hidden" name="id_manifest" value="<?= $idM ?>">
                     <textarea name="mensagem" class="form-control form-control-sm" rows="2"
@@ -563,6 +563,7 @@ require_once __DIR__ . '/../../includes/header.php';
               <div id="upd-<?= $idM ?>" class="accordion-collapse collapse">
                 <div class="accordion-body px-4 py-3">
                   <form method="post">
+                    <?= csrfInput() ?>
                     <input type="hidden" name="acao" value="atualizar_manifestacao">
                     <input type="hidden" name="id_manifest" value="<?= $idM ?>">
                     <div class="row g-3">
@@ -629,4 +630,19 @@ require_once __DIR__ . '/../../includes/header.php';
 </div>
 </section>
 
+<script>
+// Spinner de carregamento em todos os botões de submit do painel ADM
+document.querySelectorAll('form').forEach(function(form) {
+  form.addEventListener('submit', function() {
+    var btn = this.querySelector('[type=submit]');
+    if (btn && !btn.dataset.noSpinner) {
+      btn.disabled = true;
+      var icon = btn.querySelector('i');
+      if (icon) {
+        icon.className = 'fa-solid fa-circle-notch fa-spin';
+      }
+    }
+  });
+});
+</script>
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

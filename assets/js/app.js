@@ -516,3 +516,310 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 4500);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO: Upload com preview de arquivos
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    const inputArquivos = document.getElementById('arquivos');
+    const previewWrap   = document.getElementById('arquivosPreview');
+    if (!inputArquivos || !previewWrap) return;
+
+    inputArquivos.addEventListener('change', function () {
+      previewWrap.innerHTML = '';
+      const arquivos = Array.from(this.files);
+
+      arquivos.forEach(function (file) {
+        const item = document.createElement('div');
+        item.style.cssText = [
+          'display:flex;align-items:center;gap:8px;',
+          'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;',
+          'padding:6px 12px;font-size:.82rem;color:#166534;max-width:220px;',
+        ].join('');
+
+        const isImagem = file.type.startsWith('image/');
+
+        if (isImagem) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            img.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;';
+            item.insertBefore(img, item.firstChild);
+          };
+          reader.readAsDataURL(file);
+        } else {
+          const icon = document.createElement('i');
+          const iconClass = file.type === 'application/pdf' ? 'fa-file-pdf' : 'fa-file';
+          icon.className = 'fa-solid ' + iconClass;
+          icon.style.cssText = 'font-size:1.2rem;flex-shrink:0;';
+          item.appendChild(icon);
+        }
+
+        const info = document.createElement('div');
+        info.style.cssText = 'overflow:hidden;';
+
+        const nome = document.createElement('div');
+        nome.style.cssText = 'font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;';
+        nome.textContent = file.name;
+
+        const tamanho = document.createElement('div');
+        tamanho.style.cssText = 'color:#4ade80;font-size:.75rem;';
+        tamanho.textContent = file.size > 1024 * 1024
+          ? (file.size / 1024 / 1024).toFixed(1) + ' MB'
+          : (file.size / 1024).toFixed(0) + ' KB';
+
+        info.appendChild(nome);
+        info.appendChild(tamanho);
+        item.appendChild(info);
+        previewWrap.appendChild(item);
+      });
+
+      if (arquivos.length > 0) {
+        const total = document.createElement('div');
+        total.style.cssText = 'font-size:.8rem;color:#6b7280;align-self:center;white-space:nowrap;';
+        total.textContent = arquivos.length + ' arquivo(s) selecionado(s)';
+        previewWrap.appendChild(total);
+      }
+    });
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO: Polling do chat + status ao vivo (acompanhar.php)
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    const chatWrap   = document.getElementById('chatRespostas');
+    const statusBadge = document.getElementById('statusAtualBadge');
+    if (!chatWrap && !statusBadge) return;
+
+    // Ler protocolo e último ID das mensagens já renderizadas no HTML
+    const protocolo = (document.getElementById('protocoloAtual') || {}).value || '';
+    if (!protocolo) return;
+
+    let ultimoId = 0;
+    const msgs = chatWrap ? chatWrap.querySelectorAll('[data-msg-id]') : [];
+    msgs.forEach(function (el) {
+      const id = parseInt(el.dataset.msgId, 10);
+      if (id > ultimoId) ultimoId = id;
+    });
+
+    // Mapa de classes CSS por status
+    const STATUS_CLASSES = {
+      'Recebida':     'badge-status-recebida',
+      'Em andamento': 'badge-status-andamento',
+      'Resolvida':    'badge-status-resolvida',
+      'Arquivada':    'badge-status-arquivada',
+    };
+
+    function renderMensagem(msg) {
+      const div = document.createElement('div');
+      div.dataset.msgId = msg.IDresposta;
+      div.className = 'chat-bubble-acomp ' + (msg.autor_tipo === 'adm' ? 'chat-acomp-adm' : 'chat-acomp-usu');
+      div.style.animation = 'chatEntrar .3s ease';
+      div.innerHTML =
+        '<div class="chat-autor-acomp">' +
+          escapeHtml(msg.autor_nome) + ' · ' + msg.data_fmt +
+        '</div>' +
+        '<div>' + escapeHtml(msg.mensagem).replace(/\n/g, '<br>') + '</div>';
+      return div;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function poll() {
+      const base = window._baseUrl || '/projeto_final/';
+      const url  = base + 'app/api/chat_poll.php?protocolo='
+                 + encodeURIComponent(protocolo)
+                 + '&desde_id=' + ultimoId;
+
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) return;
+
+          // Atualizar badge de status
+          if (statusBadge && data.status) {
+            const novaClasse = STATUS_CLASSES[data.status] || '';
+            statusBadge.textContent = data.status;
+            statusBadge.className = 'badge-status ' + novaClasse;
+          }
+
+          // Inserir mensagens novas no chat
+          if (data.mensagens && data.mensagens.length > 0 && chatWrap) {
+            data.mensagens.forEach(function (msg) {
+              chatWrap.appendChild(renderMensagem(msg));
+            });
+            chatWrap.scrollTop = chatWrap.scrollHeight;
+
+            ultimoId = data.ultimo_id;
+
+            // Notificação push do browser para respostas do admin
+            const temRespostaAdm = data.mensagens.some(function (m) {
+              return m.autor_tipo === 'adm';
+            });
+            if (temRespostaAdm) {
+              notificarBrowser('O Grêmio respondeu sua manifestação!', 'Abra a página para ver a resposta.');
+            }
+          }
+        })
+        .catch(function () { /* silencia erros de rede */ });
+    }
+
+    // Iniciar polling a cada 10 segundos
+    setInterval(poll, 10000);
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO: Notificações push do browser
+// ═══════════════════════════════════════════════════════════════════════════
+function notificarBrowser(titulo, corpo) {
+  if (!('Notification' in window)) return;
+
+  function disparar() {
+    if (document.visibilityState === 'hidden') {
+      new Notification(titulo, {
+        body: corpo,
+        icon: window._baseUrl ? window._baseUrl + 'assets/images/logo-escola.png' : '',
+        badge: window._baseUrl ? window._baseUrl + 'assets/images/logo-escola.png' : '',
+      });
+    }
+  }
+
+  if (Notification.permission === 'granted') {
+    disparar();
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(function (perm) {
+      if (perm === 'granted') disparar();
+    });
+  }
+}
+
+// Pedir permissão de notificação quando o usuário estiver na página de acompanhamento
+document.addEventListener('DOMContentLoaded', function () {
+  if (document.getElementById('chatRespostas') && 'Notification' in window) {
+    if (Notification.permission === 'default') {
+      // Espera 3s para não aparecer logo ao carregar
+      setTimeout(function () {
+        Notification.requestPermission();
+      }, 3000);
+    }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO: Dashboard — filtros sem reload (AJAX + Chart.js update)
+// ═══════════════════════════════════════════════════════════════════════════
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    const formDash = document.getElementById('formDashFiltro');
+    if (!formDash) return;
+
+    // Referências aos gráficos — preenchidas após o Chart.js inicializar
+    // Os gráficos são registrados em window._dashCharts pelo dashboard.php
+    function atualizarGrafico(chart, labels, data) {
+      if (!chart) return;
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = data;
+      chart.update('active');
+    }
+
+    function atualizarResumoCard(seletor, valor) {
+      const el = document.querySelector(seletor);
+      if (el) {
+        el.style.transition = 'opacity .2s';
+        el.style.opacity = '0';
+        setTimeout(function () {
+          el.textContent = valor;
+          el.style.opacity = '1';
+        }, 200);
+      }
+    }
+
+    formDash.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const inicio = formDash.querySelector('[name="dash_inicio"]').value;
+      const fim    = formDash.querySelector('[name="dash_fim"]').value;
+      const base   = window._baseUrl || '/projeto_final/';
+      const url    = base + 'app/api/dashboard_data.php?dash_inicio='
+                   + encodeURIComponent(inicio) + '&dash_fim=' + encodeURIComponent(fim);
+
+      // Indicador visual de carregamento
+      const btnAplicar = formDash.querySelector('[type="submit"]');
+      const textoOriginal = btnAplicar.innerHTML;
+      btnAplicar.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Atualizando…';
+      btnAplicar.disabled = true;
+
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.ok) return;
+
+          const charts = window._dashCharts || {};
+
+          // Atualizar gráficos
+          atualizarGrafico(charts.evolucao, d.evolucao.labels, d.evolucao.data);
+          atualizarGrafico(charts.status,   d.status.labels,   d.status.data);
+          atualizarGrafico(charts.tipos,    d.tipos.labels,    d.tipos.data);
+          atualizarGrafico(charts.cursos,   d.cursos.labels,   d.cursos.data);
+          atualizarGrafico(charts.anonimo,  d.anonimo.labels,  d.anonimo.data);
+
+          // Atualizar cards de resumo
+          atualizarResumoCard('[data-resumo="total"]',      d.resumo.total);
+          atualizarResumoCard('[data-resumo="recebidas"]',  d.resumo.recebidas);
+          atualizarResumoCard('[data-resumo="andamento"]',  d.resumo.andamento);
+          atualizarResumoCard('[data-resumo="resolvidas"]', d.resumo.resolvidas);
+          atualizarResumoCard('[data-resumo="hoje"]',       d.resumo.hoje);
+          atualizarResumoCard('[data-resumo="semana"]',     d.resumo.semana);
+          atualizarResumoCard('[data-resumo="taxa"]',       d.resumo.taxa);
+
+          // Atualizar tag de período no filtro
+          let tagPeriodo = document.getElementById('tagPeriodo');
+          if (!tagPeriodo) {
+            tagPeriodo = document.createElement('span');
+            tagPeriodo.id = 'tagPeriodo';
+            tagPeriodo.style.cssText = 'background:var(--verde-xs);color:var(--verde-d);font-size:.78rem;font-weight:700;padding:6px 14px;border-radius:999px;border:1px solid rgba(26,107,64,0.2);';
+            formDash.appendChild(tagPeriodo);
+          }
+          const fmtData = function (s) {
+            if (!s) return '…';
+            const p = s.split('-');
+            return p[2] + '/' + p[1] + '/' + p[0];
+          };
+          tagPeriodo.innerHTML = '<i class="fa-solid fa-calendar-check me-1"></i>' +
+            fmtData(inicio) + ' → ' + fmtData(fim);
+
+        })
+        .catch(function () {
+          alert('Erro ao buscar dados. Verifique sua conexão.');
+        })
+        .finally(function () {
+          btnAplicar.innerHTML = textoOriginal;
+          btnAplicar.disabled  = false;
+        });
+    });
+
+    // Botão Limpar — reseta gráficos sem reload recarregando com filtro vazio
+    const btnLimpar = formDash.querySelector('.btn-limpar-dash');
+    if (btnLimpar) {
+      btnLimpar.addEventListener('click', function (e) {
+        e.preventDefault();
+        formDash.querySelector('[name="dash_inicio"]').value = '';
+        formDash.querySelector('[name="dash_fim"]').value    = '';
+        formDash.dispatchEvent(new Event('submit'));
+        const tag = document.getElementById('tagPeriodo');
+        if (tag) tag.remove();
+      });
+    }
+  });
+})();

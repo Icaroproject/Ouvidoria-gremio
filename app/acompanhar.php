@@ -35,9 +35,10 @@ if (isset($_GET['ajax_check']) && $_GET['ajax_check'] === '1') {
 
 // Resposta do usuário à manifestação (apenas logado)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'responder_usuario') {
+    validarCSRF();
     if (!usuarioLogado()) {
         flash('erro', 'Faça login para responder.');
-        header('Location: /projeto_final/app/auth/login.php');
+        header('Location: ' . BASE_URL . 'app/auth/login.php');
         exit;
     }
     $idManifest = (int)($_POST['id_manifest'] ?? 0);
@@ -55,10 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 INSERT INTO respostas_manifest (IDmanifest, IDusu, mensagem, autor_nome, autor_tipo, lida_pelo_adm)
                 VALUES (:idm, :idu, :msg, :nome, 'usuario', 0)
             ")->execute([':idm'=>$idManifest,':idu'=>(int)$_SESSION['usuario']['id'],':msg'=>$mensagem,':nome'=>$_SESSION['usuario']['nome']]);
-            // Notifica ADM
-            $stmtAdmN = $pdo2->query('SELECT IDadm FROM tbadm LIMIT 1');
-            $admN = $stmtAdmN->fetch(PDO::FETCH_ASSOC);
-            if ($admN) {
+            // Notifica TODOS os admins (não apenas o primeiro)
+            $stmtAdmN = $pdo2->query('SELECT IDadm FROM tbadm');
+            while ($admN = $stmtAdmN->fetch(PDO::FETCH_ASSOC)) {
                 criarNotificacao($pdo2, [
                     'IDadm'    => (int)$admN['IDadm'],
                     'tipo'     => 'nova_resposta',
@@ -72,26 +72,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             flash('erro', 'Você não pode responder a esta manifestação.');
         }
     }
-    header('Location: /projeto_final/app/acompanhar.php?protocolo='.urlencode($protocolo));
+    header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo='.urlencode($protocolo));
     exit;
 }
 
 // Avaliação por estrelas (1-5) + comentário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nota_satisfacao'])) {
-    $idManifest   = (int) ($_POST['id_manifest'] ?? 0);
-    $nota         = (int) $_POST['nota_satisfacao'];
-    $comentario   = trim($_POST['comentario_satisfacao'] ?? '');
+    validarCSRF();
+
+    $idManifest = (int) ($_POST['id_manifest'] ?? 0);
+    $nota       = (int) $_POST['nota_satisfacao'];
+    $comentario = trim($_POST['comentario_satisfacao'] ?? '');
+
     if ($idManifest > 0 && $nota >= 1 && $nota <= 5) {
         try {
             $pdo = conectarPDO();
-            try { $pdo->exec("ALTER TABLE tbmanifest ADD COLUMN nota_satisfacao TINYINT(1) DEFAULT NULL"); } catch (\PDOException $e) {}
-            try { $pdo->exec("ALTER TABLE tbmanifest ADD COLUMN comentario_satisfacao TEXT DEFAULT NULL"); } catch (\PDOException $e) {}
-            $pdo->prepare('UPDATE tbmanifest SET nota_satisfacao=:nota, comentario_satisfacao=:com WHERE IDmanifest=:id')
-                ->execute([':nota'=>$nota, ':com'=>$comentario!==''?$comentario:null, ':id'=>$idManifest]);
+
+            // Verifica que a manifestação pertence ao usuário logado (ownership check)
+            if (usuarioLogado()) {
+                $stmtOwn = $pdo->prepare('SELECT IDusu FROM tbmanifest WHERE IDmanifest = :id LIMIT 1');
+                $stmtOwn->execute([':id' => $idManifest]);
+                $owner = $stmtOwn->fetch();
+                if (!$owner || (int)$owner['IDusu'] !== (int)$_SESSION['usuario']['id']) {
+                    flash('erro', 'Você não tem permissão para avaliar esta manifestação.');
+                    header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . urlencode($protocolo));
+                    exit;
+                }
+            }
+
+            // DDL removido do runtime — colunas já criadas via schema.sql
+            $pdo->prepare('UPDATE tbmanifest SET nota_satisfacao = :nota, comentario_satisfacao = :com WHERE IDmanifest = :id')
+                ->execute([':nota' => $nota, ':com' => $comentario !== '' ? $comentario : null, ':id' => $idManifest]);
+
             flash('sucesso', 'Obrigado pela sua avaliação!');
-        } catch (PDOException $e) {}
+        } catch (PDOException $e) {
+            error_log('[nota_satisfacao] ' . $e->getMessage());
+            flash('erro', 'Não foi possível salvar a avaliação. Tente novamente.');
+        }
     }
-    header('Location: /projeto_final/app/acompanhar.php?protocolo=' . urlencode($protocolo));
+    header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . urlencode($protocolo));
     exit;
 }
 
@@ -183,7 +202,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="acomp-protocolo"><?= e($manifestacao['protocolo']) ?></div>
             <div class="acomp-data">Enviado em <?= date('d/m/Y \à\s H:i', strtotime($manifestacao['criado_em'])) ?></div>
           </div>
-          <div class="acomp-status <?= e(classeStatus($status)) ?>">
+          <div class="acomp-status <?= e(classeStatus($status)) ?>" id="statusAtualBadge">
             <i class="fa-solid <?= e(iconeStatus($status)) ?>"></i>
             <?= e($status) ?>
           </div>
@@ -317,11 +336,11 @@ require_once __DIR__ . '/../includes/header.php';
             <div style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--texto-suave);margin-bottom:12px;">
               <i class="fa-solid fa-comments me-1"></i>Conversa com o Grêmio
             </div>
-            <div class="d-flex flex-column gap-2">
+            <div class="d-flex flex-column gap-2" id="chatRespostas">
               <?php foreach ($respostasAc as $rAc): ?>
                 <?php $ehAdmResposta = $rAc['autor_tipo'] === 'adm'; ?>
                 <div class="d-flex <?= $ehAdmResposta ? 'justify-content-start' : 'justify-content-end' ?>">
-                  <div class="chat-bubble-acomp <?= $ehAdmResposta ? 'chat-acomp-adm' : 'chat-acomp-usu' ?>">
+                  <div class="chat-bubble-acomp <?= $ehAdmResposta ? 'chat-acomp-adm' : 'chat-acomp-usu' ?>" data-msg-id="<?= (int)$rAc['IDresposta'] ?>">
                     <div class="chat-autor-acomp"><?= e($rAc['autor_nome']) ?> · <?= date('d/m/Y H:i', strtotime($rAc['criado_em'])) ?></div>
                     <div><?= nl2br(e($rAc['mensagem'])) ?></div>
                   </div>
@@ -338,6 +357,7 @@ require_once __DIR__ . '/../includes/header.php';
               <i class="fa-solid fa-reply me-1"></i>Enviar resposta
             </div>
             <form method="post">
+              <?= csrfInput() ?>
               <input type="hidden" name="acao" value="responder_usuario">
               <input type="hidden" name="protocolo" value="<?= e($protocolo) ?>">
               <input type="hidden" name="id_manifest" value="<?= (int)$manifestacao['IDmanifest'] ?>">
@@ -354,9 +374,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="acomp-util-box">
           <div class="acomp-util-title">Como você avalia o atendimento do Grêmio?</div>
           <?php
-            try { $pdo->exec("ALTER TABLE tbmanifest ADD COLUMN nota_satisfacao TINYINT(1) DEFAULT NULL"); } catch (\PDOException $e) {}
-            try { $pdo->exec("ALTER TABLE tbmanifest ADD COLUMN comentario_satisfacao TEXT DEFAULT NULL"); } catch (\PDOException $e) {}
-            $notaAtual = $manifestacao['nota_satisfacao'] ?? null;
+            $notaAtual   = $manifestacao['nota_satisfacao'] ?? null;
             $comentAtual = $manifestacao['comentario_satisfacao'] ?? '';
           ?>
           <?php if ($notaAtual): ?>
@@ -368,6 +386,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
           <?php else: ?>
             <form method="post" style="margin-top:12px;" id="formEstrelas">
+              <?= csrfInput() ?>
               <input type="hidden" name="protocolo" value="<?= e($protocolo) ?>">
               <input type="hidden" name="id_manifest" value="<?= (int)$manifestacao['IDmanifest'] ?>">
               <input type="hidden" name="nota_satisfacao" id="inputNota" value="">
@@ -504,5 +523,18 @@ require_once __DIR__ . '/../includes/header.php';
   }
 })();
 </script>
+
+<?php if ($manifestacao): ?>
+<!-- Dados para o módulo de polling (app.js) -->
+<input type="hidden" id="protocoloAtual" value="<?= e($manifestacao['protocolo']) ?>">
+<script>window._baseUrl = '<?= BASE_URL ?>';</script>
+<?php endif; ?>
+
+<style>
+@keyframes chatEntrar {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+</style>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

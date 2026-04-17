@@ -1,4 +1,3 @@
-DROP DATABASE IF EXISTS `dbouvidoria`;
 CREATE DATABASE IF NOT EXISTS `dbouvidoria` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `dbouvidoria`;
 
@@ -59,6 +58,9 @@ CREATE TABLE `tbmanifest` (
   `setor_relacionado` VARCHAR(80) DEFAULT NULL,
   `data_ocorrencia` DATE DEFAULT NULL,
   `util` TINYINT(1) DEFAULT NULL,
+  `nota_satisfacao` TINYINT(1) DEFAULT NULL,
+  `comentario_satisfacao` TEXT DEFAULT NULL,
+  `arquivada` TINYINT(1) NOT NULL DEFAULT 0,
   `criado_em` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`IDmanifest`),
   KEY `fk_manifest_usuario` (`IDusu`),
@@ -145,6 +147,16 @@ CREATE TABLE `password_resets` (
   PRIMARY KEY (`id`),
   KEY `idx_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `rate_limit` (
+  `id`        INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `chave`     VARCHAR(255) NOT NULL,
+  `criado_em` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_chave`   (`chave`),
+  KEY `idx_criado`  (`criado_em`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Registra tentativas para rate limiting de login e recuperação de senha.';
 
 INSERT INTO `tipos` (`descricao`) VALUES
 ('Sugestão'), ('Elogio'), ('Reclamação'), ('Denúncia');

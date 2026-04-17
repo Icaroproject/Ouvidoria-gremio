@@ -31,11 +31,11 @@ try {
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css">
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
   <!-- Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <!-- Custom CSS (sempre depois do Bootstrap para sobrescrever) -->
-  <link rel="stylesheet" href="<?= $_base ?>assets/css/style.css">
+  <link rel="stylesheet" href="<?= $_base ?>assets/css/style.css?v=2.0.1">
 </head>
 <body>
 
@@ -88,12 +88,94 @@ try {
       </div>
     <?php endif; ?>
 
-    <?php if (administradorLogado()): ?>
-      <a href="<?= $_base ?>app/painel/adm.php"    class="topbar-btn topbar-btn-login"><i class="fa-solid fa-user-shield"></i> <span><?= e($_SESSION['admin']['nome']) ?></span></a>
-      <a href="<?= $_base ?>app/auth/logout.php" class="topbar-btn topbar-btn-cadastro"><i class="fa-solid fa-right-from-bracket"></i> <span>Sair</span></a>
-    <?php elseif (usuarioLogado()): ?>
-      <a href="<?= $_base ?>app/painel/minha_conta.php" class="topbar-btn topbar-btn-login"><i class="fa-solid fa-user"></i> <span><?= e($_SESSION['usuario']['nome']) ?></span></a>
-      <a href="<?= $_base ?>app/auth/logout.php"      class="topbar-btn topbar-btn-cadastro"><i class="fa-solid fa-right-from-bracket"></i> <span>Logout</span></a>
+    <?php if (administradorLogado()):
+      $_m3_nome     = e($_SESSION['admin']['nome']);
+      $_m3_inicial  = mb_strtoupper(mb_substr($_SESSION['admin']['nome'], 0, 1));
+      $_m3_role     = 'Administrador';
+      $_m3_is_admin = true;
+    elseif (usuarioLogado()):
+      $_m3_nome     = e($_SESSION['usuario']['nome']);
+      $_m3_inicial  = mb_strtoupper(mb_substr($_SESSION['usuario']['nome'], 0, 1));
+      $_m3_role     = 'Aluno';
+      $_m3_is_admin = false;
+    endif; ?>
+
+    <?php if (administradorLogado() || usuarioLogado()): ?>
+    <!-- ── M3 User Dropdown ── -->
+    <div id="m3DropOverlay"></div>
+    <div class="m3-user-trigger-wrap" id="m3UserWrap">
+      <button class="m3-user-trigger" id="m3UserTrigger" aria-haspopup="true" aria-expanded="false" aria-controls="m3DropPanel">
+        <div class="m3-ripple-surface"><div class="m3-ripple-circle" id="m3TriggerRipple"></div></div>
+        <span class="m3-avatar"><?= $_m3_inicial ?></span>
+        <span class="m3-trigger-name"><?= $_m3_nome ?></span>
+        <!-- Chevron SVG -->
+        <svg class="m3-trigger-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      <!-- Painel principal -->
+      <div class="m3-dropdown-panel" id="m3DropPanel" role="menu">
+
+        <!-- Cabeçalho com info do usuário -->
+        <div class="m3-panel-header">
+          <div class="m3-panel-avatar"><?= $_m3_inicial ?></div>
+          <div style="overflow:hidden">
+            <span class="m3-panel-info-name"><?= $_m3_nome ?></span>
+            <span class="m3-panel-info-role"><?= $_m3_role ?></span>
+          </div>
+        </div>
+
+        <!-- Página principal -->
+        <div class="m3-page" id="m3PageMain">
+          <?php if ($_m3_is_admin): ?>
+            <span class="m3-item-label">Administração</span>
+            <a href="<?= $_base ?>app/painel/dashboard.php" class="m3-item" role="menuitem" style="--i:0">
+              <span class="m3-item-hover-bg"></span>
+              <span class="m3-item-icon"><i class="fa-solid fa-chart-line" style="font-size:0.82rem"></i></span>
+              Dashboard
+            </a>
+            <a href="<?= $_base ?>app/painel/adm.php" class="m3-item" role="menuitem" style="--i:1">
+              <span class="m3-item-hover-bg"></span>
+              <span class="m3-item-icon"><i class="fa-solid fa-shield-halved" style="font-size:0.82rem"></i></span>
+              Painel do Grêmio
+            </a>
+            <div class="m3-sep" style="--i:2"></div>
+            <span class="m3-item-label">Conta</span>
+          <?php else: ?>
+            <span class="m3-item-label">Minha conta</span>
+            <a href="<?= $_base ?>app/painel/minha_conta.php" class="m3-item" role="menuitem" style="--i:0">
+              <span class="m3-item-hover-bg"></span>
+              <span class="m3-item-icon"><i class="fa-solid fa-user" style="font-size:0.82rem"></i></span>
+              Perfil
+            </a>
+            <a href="<?= $_base ?>app/painel/minha_conta.php#manifestacoes" class="m3-item" role="menuitem" style="--i:1">
+              <span class="m3-item-hover-bg"></span>
+              <span class="m3-item-icon"><i class="fa-solid fa-list-check" style="font-size:0.82rem"></i></span>
+              Minhas Manifestações
+            </a>
+            <div class="m3-sep" style="--i:2"></div>
+            <span class="m3-item-label">Ações</span>
+          <?php endif; ?>
+          <a href="<?= $_base ?>app/notificacoes.php" class="m3-item" role="menuitem" style="--i:<?= $_m3_is_admin ? 3 : 2 ?>">
+            <span class="m3-item-hover-bg"></span>
+            <span class="m3-item-icon"><i class="fa-solid fa-bell" style="font-size:0.82rem"></i></span>
+            Notificações
+            <?php if ($_notifsNaoLidas > 0): ?>
+              <span class="notif-badge" style="position:relative;top:0;right:0;margin-left:auto"><?= $_notifsNaoLidas > 9 ? '9+' : $_notifsNaoLidas ?></span>
+            <?php endif; ?>
+          </a>
+          <div class="m3-sep" style="--i:<?= $_m3_is_admin ? 4 : 3 ?>"></div>
+          <a href="<?= $_base ?>app/auth/logout.php" class="m3-item m3-danger" role="menuitem" style="--i:<?= $_m3_is_admin ? 5 : 4 ?>">
+            <span class="m3-item-hover-bg"></span>
+            <span class="m3-item-icon"><i class="fa-solid fa-right-from-bracket" style="font-size:0.82rem"></i></span>
+            Sair
+          </a>
+        </div>
+
+      </div><!-- /m3DropPanel -->
+    </div><!-- /m3UserWrap -->
+
     <?php else: ?>
       <a href="<?= $_base ?>app/auth/login.php"          class="topbar-btn topbar-btn-login"><i class="fa-solid fa-right-to-bracket"></i> <span>Login</span></a>
       <a href="<?= $_base ?>app/auth/login.php#cadastro" class="topbar-btn topbar-btn-cadastro"><i class="fa-solid fa-user-plus"></i> <span>Cadastrar-se</span></a>
@@ -147,6 +229,61 @@ try {
   </div>
 </aside>
 <div class="drawer-overlay" id="drawerOverlay"></div>
+
+<!-- ── M3 Dropdown JS ── -->
+<script>
+(function () {
+  const trigger  = document.getElementById("m3UserTrigger");
+  const panel    = document.getElementById("m3DropPanel");
+  const overlay  = document.getElementById("m3DropOverlay");
+  const ripple   = document.getElementById("m3TriggerRipple");
+  if (!trigger || !panel) return;
+  let open = false, closeTimer = null;
+  function openPanel() {
+    if (open) return; open = true;
+    clearTimeout(closeTimer);
+    overlay.classList.add("active");
+    panel.classList.remove("m3-closing");
+    panel.classList.add("m3-open");
+    trigger.setAttribute("aria-expanded","true");
+  }
+  function closePanel() {
+    if (!open) return; open = false;
+    panel.classList.add("m3-closing");
+    trigger.setAttribute("aria-expanded","false");
+    overlay.classList.remove("active");
+    closeTimer = setTimeout(() => panel.classList.remove("m3-open","m3-closing"), 300);
+  }
+  trigger.addEventListener("click", (e) => { e.stopPropagation(); open ? closePanel() : openPanel(); doRipple(e); });
+  overlay.addEventListener("click", closePanel);
+  document.addEventListener("keydown", (e) => { if (e.key==="Escape"&&open){ closePanel(); trigger.focus(); } });
+  function doRipple(e) {
+    const rect = trigger.getBoundingClientRect();
+    const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
+    const maxR = Math.max(Math.hypot(cx,cy),Math.hypot(rect.width-cx,cy),Math.hypot(cx,rect.height-cy),Math.hypot(rect.width-cx,rect.height-cy));
+    const size = (maxR/0.65)*2;
+    ripple.style.width = size+"px"; ripple.style.height = size+"px";
+    const left=cx-size/2, top=cy-size/2, cl=(rect.width-size)/2, ct=(rect.height-size)/2;
+    ripple.getAnimations().forEach(a=>a.cancel());
+    ripple.animate([{transform:`translate(${left}px,${top}px) scale(0.04)`,opacity:0.12},{transform:`translate(${cl}px,${ct}px) scale(1)`,opacity:0.12}],{duration:700,easing:"cubic-bezier(0.4,0,0.2,1)",fill:"forwards"});
+  }
+  panel.querySelectorAll(".m3-item").forEach(item => {
+    item.addEventListener("pointerdown", function(e) {
+      if(e.button!==0) return;
+      let rip=this.querySelector(".m3-item-ripple");
+      if(!rip){rip=document.createElement("div");rip.className="m3-item-ripple";this.appendChild(rip);}
+      const rect=this.getBoundingClientRect(), cx=e.clientX-rect.left, cy=e.clientY-rect.top;
+      const hyp=Math.sqrt(rect.width**2+rect.height**2), init=Math.max(2,rect.height*0.2), scale=(hyp+40)/init;
+      rip.style.width=init+"px"; rip.style.height=init+"px";
+      rip.getAnimations?.().forEach(a=>a.cancel());
+      rip.animate([{transform:`translate(${cx-init/2}px,${cy-init/2}px) scale(1)`},{transform:`translate(${(rect.width-init)/2}px,${(rect.height-init)/2}px) scale(${scale})`}],{duration:500,easing:"cubic-bezier(0.2,0,0,1)",fill:"forwards"});
+      rip.classList.add("active");
+      const end=()=>{setTimeout(()=>rip.classList.remove("active"),200);this.removeEventListener("pointerup",end);this.removeEventListener("pointerleave",end);};
+      this.addEventListener("pointerup",end); this.addEventListener("pointerleave",end);
+    });
+  });
+})();
+</script>
 
 <main class="main-content">
 <?php if ($flashData): ?>

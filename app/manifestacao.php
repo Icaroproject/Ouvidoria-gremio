@@ -23,6 +23,7 @@ $dadosFormulario = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    validarCSRF();
     $modoEnvio = trim($_POST['modo'] ?? 'anonimo');
 
     $dadosFormulario = [
@@ -41,25 +42,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($descricaoTipo === '') {
         flash('erro', 'Selecione o tipo da manifestação.');
-        header('Location: /projeto_final/app/manifestacao.php?modo=' . urlencode($modoEnvio));
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?modo=' . urlencode($modoEnvio));
         exit;
     }
 
     if ($dadosFormulario['assunto'] === '' || mb_strlen($dadosFormulario['assunto']) < 5) {
         flash('erro', 'Informe um assunto com pelo menos 5 caracteres.');
-        header('Location: /projeto_final/app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
         exit;
     }
 
     if ($dadosFormulario['descricao'] === '' || mb_strlen($dadosFormulario['descricao']) < 15) {
         flash('erro', 'Descreva a manifestação com pelo menos 15 caracteres.');
-        header('Location: /projeto_final/app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
         exit;
     }
 
     if ($dadosFormulario['email'] !== '' && !filter_var($dadosFormulario['email'], FILTER_VALIDATE_EMAIL)) {
         flash('erro', 'Informe um e-mail válido para retorno ou deixe o campo em branco.');
-        header('Location: /projeto_final/app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
         exit;
     }
 
@@ -69,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$tipoBanco) {
         flash('erro', 'Não foi possível localizar o tipo de manifestação no banco.');
-        header('Location: /projeto_final/app/manifestacao.php?modo=' . urlencode($modoEnvio));
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?modo=' . urlencode($modoEnvio));
         exit;
     }
 
@@ -176,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     flash('sucesso', 'Manifestação enviada com sucesso. Seu protocolo é ' . $protocoloGerado . '.');
-    header('Location: /projeto_final/app/manifestacao.php?sucesso=1&protocolo=' . urlencode($protocoloGerado) . '&modo=' . urlencode($modoEnvio));
+    header('Location: ' . BASE_URL . 'app/manifestacao.php?sucesso=1&protocolo=' . urlencode($protocoloGerado) . '&modo=' . urlencode($modoEnvio));
     exit;
 }
 
@@ -306,6 +307,7 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 
     <form method="post" novalidate id="formManifestacao" enctype="multipart/form-data">
+      <?= csrfInput() ?>
       <input type="hidden" name="modo" value="<?= e($modoEnvio) ?>">
 
       <div class="form-group">

@@ -2,49 +2,61 @@
 require_once __DIR__ . '/../../config/bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    validarCSRF();
+
     $acao = $_POST['acao'] ?? 'login';
 
     if ($acao === 'login') {
-        $email = trim($_POST['email'] ?? '');
-        $senha = trim($_POST['senha'] ?? '');
+        $email      = trim($_POST['email'] ?? '');
+        $senha      = trim($_POST['senha'] ?? '');
         $tipoAcesso = $_POST['tipo_acesso'] ?? 'adm';
-        $lembrar = isset($_POST['lembrar_me']);
+        $lembrar    = isset($_POST['lembrar_me']);
 
         if ($email === '' || $senha === '') {
             flash('erro', 'Preencha e-mail e senha para continuar.');
-            header('Location: /projeto_final/app/auth/login.php');
+            header('Location: ' . BASE_URL . 'app/auth/login.php');
             exit;
         }
 
         try {
             $pdo = conectarPDO();
 
+            // Rate limiting por IP + e-mail
+            $chaveRL = 'login:' . $_SERVER['REMOTE_ADDR'] . ':' . $email;
+            if (verificarRateLimit($pdo, $chaveRL)) {
+                flash('erro', 'Muitas tentativas incorretas. Aguarde alguns minutos e tente novamente.');
+                header('Location: ' . BASE_URL . 'app/auth/login.php');
+                exit;
+            }
+
             if ($tipoAcesso === 'adm') {
                 $stmt = $pdo->prepare('SELECT IDadm, nome, email, senha FROM tbadm WHERE email = :email LIMIT 1');
                 $stmt->execute([':email' => $email]);
                 $admin = $stmt->fetch();
 
-                if (!$admin || !senhaConfere($senha, (string) $admin['senha'])) {
-                    flash('erro', 'Login incorreto. E-mail ou senha do administrador estão errados.');
-                    header('Location: /projeto_final/app/auth/login.php');
+                // Mensagem genérica — não revela se o e-mail existe ou qual campo está errado
+                if (!$admin || !senhaConfere($senha, (string)$admin['senha'])) {
+                    registrarTentativaFalhada($pdo, $chaveRL);
+                    flash('erro', 'E-mail ou senha incorretos.');
+                    header('Location: ' . BASE_URL . 'app/auth/login.php');
                     exit;
                 }
 
+                limparRateLimit($pdo, $chaveRL);
+                session_regenerate_id(true); // previne session fixation
+
                 $_SESSION['admin'] = [
-                    'id' => $admin['IDadm'],
-                    'nome' => $admin['nome'],
+                    'id'    => $admin['IDadm'],
+                    'nome'  => $admin['nome'],
                     'email' => $admin['email'],
                 ];
                 unset($_SESSION['usuario']);
 
-                if ($lembrar) {
-                    setRememberMeCookies($email, $tipoAcesso);
-                } else {
-                    clearRememberMeCookies();
-                }
+                if ($lembrar) setRememberMeCookies($email, $tipoAcesso);
+                else          clearRememberMeCookies();
 
                 flash('sucesso', 'Login administrativo realizado com sucesso.');
-                header('Location: /projeto_final/app/painel/dashboard.php');
+                header('Location: ' . BASE_URL . 'app/painel/dashboard.php');
                 exit;
             }
 
@@ -52,114 +64,125 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([':email' => $email]);
             $usuario = $stmt->fetch();
 
-            if (!$usuario || !senhaConfere($senha, (string) $usuario['senha'])) {
-                flash('erro', 'Login incorreto. Usuário não encontrado ou senha inválida.');
-                header('Location: /projeto_final/app/auth/login.php');
+            if (!$usuario || !senhaConfere($senha, (string)$usuario['senha'])) {
+                registrarTentativaFalhada($pdo, $chaveRL);
+                flash('erro', 'E-mail ou senha incorretos.');
+                header('Location: ' . BASE_URL . 'app/auth/login.php');
                 exit;
             }
 
+            limparRateLimit($pdo, $chaveRL);
+            session_regenerate_id(true); // previne session fixation
+
             $_SESSION['usuario'] = [
-                'id' => $usuario['IDusu'],
-                'nome' => $usuario['nome'],
+                'id'    => $usuario['IDusu'],
+                'nome'  => $usuario['nome'],
                 'email' => $usuario['email'],
             ];
             unset($_SESSION['admin']);
 
-            if ($lembrar) {
-                setRememberMeCookies($email, $tipoAcesso);
-            } else {
-                clearRememberMeCookies();
-            }
+            if ($lembrar) setRememberMeCookies($email, $tipoAcesso);
+            else          clearRememberMeCookies();
 
             flash('sucesso', 'Login realizado com sucesso.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
+
         } catch (PDOException $e) {
-            flash('erro', 'Erro ao consultar o banco de dados com PDO. Verifique a conexão.');
-            header('Location: /projeto_final/app/auth/login.php');
+            error_log('[login] ' . $e->getMessage());
+            flash('erro', 'Erro ao conectar ao banco de dados. Tente novamente.');
+            header('Location: ' . BASE_URL . 'app/auth/login.php');
             exit;
         }
     }
 
     if ($acao === 'cadastro') {
-        $nome = trim($_POST['nome'] ?? '');
-        $cpf = trim($_POST['cpf'] ?? '');
-        $perfil = trim($_POST['perfil'] ?? '');
-        $email = trim($_POST['email_cadastro'] ?? '');
-        $senha = trim($_POST['senha_cadastro'] ?? '');
-        $confirmar = trim($_POST['confirmar_senha'] ?? '');
+        $nome      = trim($_POST['nome']            ?? '');
+        $cpf       = trim($_POST['cpf']             ?? '');
+        $perfil    = trim($_POST['perfil']           ?? '');
+        $email     = trim($_POST['email_cadastro']   ?? '');
+        $senha     = trim($_POST['senha_cadastro']   ?? '');
+        $confirmar = trim($_POST['confirmar_senha']  ?? '');
 
         if ($nome === '' || $cpf === '' || $email === '' || $senha === '' || $confirmar === '') {
             flash('erro', 'Preencha os campos obrigatórios do cadastro.');
-            header('Location: /projeto_final/app/auth/login.php#cadastro');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             flash('erro', 'Informe um e-mail válido.');
-            header('Location: /projeto_final/app/auth/login.php#cadastro');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if (!validarCPF($cpf)) {
             flash('erro', 'CPF inválido.');
-            header('Location: /projeto_final/app/auth/login.php#cadastro');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
+            exit;
+        }
+
+        // Valida perfil contra a lista permitida
+        if ($perfil !== '' && !validarPerfil($perfil)) {
+            flash('erro', 'Perfil inválido.');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if ($senha !== $confirmar) {
-            flash('erro', 'As senhas do cadastro não coincidem.');
-            header('Location: /projeto_final/app/auth/login.php#cadastro');
+            flash('erro', 'As senhas não coincidem.');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if (mb_strlen($senha) < 8) {
             flash('erro', 'A senha deve ter pelo menos 8 caracteres.');
-            header('Location: /projeto_final/app/auth/login.php#cadastro');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         try {
-            $pdo = conectarPDO();
+            $pdo     = conectarPDO();
             $cpfLimpo = preg_replace('/\D/', '', $cpf);
 
             if (cpfJaCadastrado($pdo, $cpfLimpo)) {
                 flash('erro', 'Este CPF já está cadastrado no sistema.');
-                header('Location: /projeto_final/app/auth/login.php#cadastro');
+                header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
                 exit;
             }
 
             $verifica = $pdo->prepare('SELECT IDusu FROM tbusuarios WHERE email = :email LIMIT 1');
             $verifica->execute([':email' => $email]);
-
             if ($verifica->fetch()) {
                 flash('erro', 'Já existe um cadastro com esse e-mail.');
-                header('Location: /projeto_final/app/auth/login.php#cadastro');
+                header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
                 exit;
             }
 
             $stmt = $pdo->prepare('INSERT INTO tbusuarios (nome, cpf, perfil, email, senha) VALUES (:nome, :cpf, :perfil, :email, :senha)');
             $stmt->execute([
-                ':nome' => $nome,
-                ':cpf' => $cpfLimpo,
-                ':perfil' => $perfil,
-                ':email' => $email,
-                ':senha' => password_hash($senha, PASSWORD_DEFAULT),
+                ':nome'   => $nome,
+                ':cpf'    => $cpfLimpo,
+                ':perfil' => $perfil !== '' ? $perfil : null,
+                ':email'  => $email,
+                ':senha'  => password_hash($senha, PASSWORD_DEFAULT),
             ]);
 
             flash('sucesso', 'Cadastro realizado com sucesso. Agora você já pode entrar.');
-            header('Location: /projeto_final/app/auth/login.php?cadastro=ok');
+            header('Location: ' . BASE_URL . 'app/auth/login.php?cadastro=ok');
             exit;
+
         } catch (PDOException $e) {
-            flash('erro', 'Não foi possível concluir o cadastro no banco de dados.');
-            header('Location: /projeto_final/app/auth/login.php#cadastro');
+            error_log('[cadastro] ' . $e->getMessage());
+            flash('erro', 'Não foi possível concluir o cadastro. Tente novamente.');
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
     }
 }
 
 $emailLembrado = $_COOKIE['remember_email'] ?? '';
-$tipoLembrado = $_COOKIE['remember_tipo'] ?? 'adm';
+$tipoLembrado  = $_COOKIE['remember_tipo']  ?? 'adm';
 
 $tituloPagina = 'Login e Cadastro — Ouvidoria do Grêmio Escolar';
 require_once __DIR__ . '/../../includes/header.php';
@@ -185,13 +208,14 @@ require_once __DIR__ . '/../../includes/header.php';
         <p class="auth-sub">Use sua conta para registrar manifestações e acompanhar seus dados.</p>
 
         <form method="post" autocomplete="off" id="formLogin">
+          <?= csrfInput() ?>
           <input type="hidden" name="acao" value="login">
 
           <div class="form-group">
             <label for="tipo_acesso">Tipo de acesso</label>
             <select name="tipo_acesso" id="tipo_acesso" class="form-control">
-              <option value="adm" <?= $tipoLembrado === 'adm' ? 'selected' : '' ?>>Administrador / Grêmio</option>
-              <option value="usuario" <?= $tipoLembrado === 'usuario' ? 'selected' : '' ?>>Usuário</option>
+              <option value="adm"     <?= $tipoLembrado === 'adm'     ? 'selected' : '' ?>>Administrador / Grêmio</option>
+              <option value="usuario" <?= $tipoLembrado === 'usuario'  ? 'selected' : '' ?>>Usuário</option>
             </select>
           </div>
 
@@ -214,7 +238,9 @@ require_once __DIR__ . '/../../includes/header.php';
             <a href="<?= $_base ?>app/auth/forgot_password.php" style="font-size:0.82rem;color:var(--laranja);text-decoration:none;font-weight:600">Esqueci minha senha</a>
           </div>
 
-          <button type="submit" class="btn-submit"><i class="fa-solid fa-right-to-bracket"></i> Entrar na plataforma</button>
+          <button type="submit" class="btn-submit" id="btnLogin">
+            <i class="fa-solid fa-right-to-bracket"></i> Entrar na plataforma
+          </button>
         </form>
       </div>
 
@@ -223,6 +249,7 @@ require_once __DIR__ . '/../../includes/header.php';
         <p class="auth-sub">Cadastre-se para registrar manifestações e gerenciar seus dados pessoais.</p>
 
         <form method="post" autocomplete="off" id="formCadastro">
+          <?= csrfInput() ?>
           <input type="hidden" name="acao" value="cadastro">
 
           <div class="form-group">
@@ -266,11 +293,26 @@ require_once __DIR__ . '/../../includes/header.php';
             <input type="password" name="confirmar_senha" id="cadConfSenha" class="form-control" placeholder="Repita a senha">
           </div>
 
-          <button type="submit" class="btn-green"><i class="fa-solid fa-user-plus"></i> Concluir cadastro</button>
+          <button type="submit" class="btn-green" id="btnCadastro">
+            <i class="fa-solid fa-user-plus"></i> Concluir cadastro
+          </button>
         </form>
       </div>
     </div>
   </div>
 </div>
+
+<script>
+// Spinner de carregamento nos botões de submit
+document.querySelectorAll('form').forEach(form => {
+  form.addEventListener('submit', function() {
+    const btn = this.querySelector('[type=submit]');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Aguarde...';
+    }
+  });
+});
+</script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

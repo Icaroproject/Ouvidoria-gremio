@@ -6,9 +6,6 @@ $pdo = conectarPDO();
 garantirTabelasExtras($pdo);
 $idUsuario = (int) $_SESSION['usuario']['id'];
 
-// Garantir coluna foto_perfil
-try { try { $pdo->exec("ALTER TABLE tbusuarios ADD COLUMN foto_perfil VARCHAR(255) DEFAULT NULL"); } catch (\PDOException $e) {} } catch (Exception $e) {}
-
 $stmt = $pdo->prepare('SELECT * FROM tbusuarios WHERE IDusu = :id LIMIT 1');
 $stmt->execute([':id' => $idUsuario]);
 $usuario = $stmt->fetch();
@@ -16,11 +13,12 @@ $usuario = $stmt->fetch();
 if (!$usuario) {
     unset($_SESSION['usuario']);
     flash('erro', 'Sua conta não foi encontrada.');
-    header('Location: /projeto_final/app/auth/login.php');
+    header('Location: ' . BASE_URL . 'app/auth/login.php');
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    validarCSRF();
     $acao = $_POST['acao'] ?? '';
 
     // Upload de foto de perfil
@@ -55,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             flash('erro', 'Nenhuma imagem selecionada.');
         }
-        header('Location: /projeto_final/app/painel/minha_conta.php');
+        header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
         exit;
     }
 
@@ -67,13 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($nome === '' || $email === '') {
             flash('erro', 'Nome e e-mail são obrigatórios.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             flash('erro', 'Informe um e-mail válido.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
@@ -81,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $verifica->execute([':email' => $email, ':id' => $idUsuario]);
         if ($verifica->fetch()) {
             flash('erro', 'Esse e-mail já está em uso por outra conta.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
@@ -98,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['usuario']['email'] = $email;
 
         flash('sucesso', 'Dados atualizados com sucesso.');
-        header('Location: /projeto_final/app/painel/minha_conta.php');
+        header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
         exit;
     }
 
@@ -109,25 +107,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($senhaAtual === '' || $novaSenha === '' || $confirmarSenha === '') {
             flash('erro', 'Preencha todos os campos da senha.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
         if (!senhaConfere($senhaAtual, (string) $usuario['senha'])) {
             flash('erro', 'A senha atual está incorreta.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
         if (mb_strlen($novaSenha) < 8) {
             flash('erro', 'A nova senha deve ter pelo menos 8 caracteres.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
         if ($novaSenha !== $confirmarSenha) {
             flash('erro', 'As novas senhas não coincidem.');
-            header('Location: /projeto_final/app/painel/minha_conta.php');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
 
@@ -138,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
 
         flash('sucesso', 'Senha alterada com sucesso.');
-        header('Location: /projeto_final/app/painel/minha_conta.php');
+        header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
         exit;
     }
 
@@ -149,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_SESSION['usuario']);
         clearRememberMeCookies();
         flash('sucesso', 'Conta excluída com sucesso.');
-        header('Location: /projeto_final/index.php');
+        header('Location: ' . BASE_URL . 'index.php');
         exit;
     }
 }
@@ -220,6 +218,7 @@ require_once __DIR__ . '/../../includes/header.php';
           <div class="perfil-nome"><?= e($usuario['nome'] ?? '') ?></div>
           <div class="perfil-perfil"><?= e($usuario['perfil'] ?? 'Usuário') ?></div>
           <form method="post" enctype="multipart/form-data" id="formFoto">
+            <?= csrfInput() ?>
             <input type="hidden" name="acao" value="upload_foto">
             <input type="file" name="foto_perfil" id="fotoInput" accept="image/*" style="display:none;">
             <button type="submit" id="btnSalvarFoto" class="btn-foto-salvar" style="display:none;">
@@ -234,6 +233,7 @@ require_once __DIR__ . '/../../includes/header.php';
 
       <h2 class="auth-title">Dados pessoais</h2>
       <form method="post" id="formMinhaContaDados" autocomplete="off">
+        <?= csrfInput() ?>
         <input type="hidden" name="acao" value="atualizar_dados">
 
         <div class="form-group">
@@ -336,6 +336,7 @@ require_once __DIR__ . '/../../includes/header.php';
     <div class="form-card">
       <h2 class="auth-title">Alterar senha</h2>
       <form method="post" id="formMinhaContaSenha" autocomplete="off">
+        <?= csrfInput() ?>
         <input type="hidden" name="acao" value="alterar_senha">
 
         <div class="form-group">
@@ -364,6 +365,7 @@ require_once __DIR__ . '/../../includes/header.php';
       <h2 class="auth-title" style="color:#b91c1c;">Excluir conta</h2>
       <p style="color:var(--texto-suave);margin-bottom:24px;">Esta ação é irreversível. Todos os seus dados serão removidos permanentemente.</p>
       <form method="post" onsubmit="return confirm('Tem certeza que deseja excluir sua conta? Esta ação não poderá ser desfeita.');">
+        <?= csrfInput() ?>
         <input type="hidden" name="acao" value="excluir_conta">
         <button type="submit" class="btn-submit btn-danger">Excluir minha conta</button>
       </form>
@@ -420,4 +422,15 @@ require_once __DIR__ . '/../../includes/header.php';
 })();
 </script>
 
+<script>
+document.querySelectorAll('form').forEach(function(form) {
+  form.addEventListener('submit', function() {
+    var btn = this.querySelector('[type=submit]');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Aguarde...';
+    }
+  });
+});
+</script>
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

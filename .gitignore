@@ -1,0 +1,14 @@
+# Segredos — NUNCA commitar
+.env
+
+# Storage de arquivos dos usuários
+storage/fotos/*
+storage/manifestacoes/*
+!storage/fotos/.htaccess
+!storage/manifestacoes/.htaccess
+
+# Dependências (se usar Composer futuramente)
+vendor/
+
+# Logs
+*.log

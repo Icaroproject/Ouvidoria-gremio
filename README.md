@@ -3,7 +3,7 @@
 
 > Sistema web de ouvidoria escolar desenvolvido para o Grêmio Estudantil da EEEP Dom Walfrido Teixeira Vieira. Permite que alunos, responsáveis e comunidade registrem manifestações de forma anônima ou identificada, com acompanhamento em tempo real por protocolo.
 
-**Versão:** `1.5.0`  
+**Versão:** `2.0.0`  
 **Stack:** PHP 8.2 · MySQL · Bootstrap 5 · Chart.js · PHPMailer  
 **Ambiente:** Apache (XAMPP/WAMP) · `localhost`
 
@@ -38,7 +38,7 @@
 - **Arquivar e excluir** manifestações individualmente
 - Resposta direta ao aluno pelo painel (chat interno)
 - Atualização de status com feedback e histórico completo de movimentações
-- Notificação interna ao aluno ao mover status
+- Notificação interna a **todos os admins** ao receber resposta de aluno
 - Dashboard com gráficos em tempo real:
   - Evolução de manifestações nos últimos 30 dias (gráfico de linha)
   - Distribuição por status (donut)
@@ -64,32 +64,40 @@
 htdocs/projeto_final/
 ```
 
-**2. Importe o banco de dados**
+**2. Configure as variáveis de ambiente**
 
-Abra o phpMyAdmin e execute o arquivo:
+Copie `.env.example` para `.env` e preencha com seus dados:
+```bash
+cp .env.example .env
+```
+
+```ini
+# Banco de dados
+DB_HOST=localhost
+DB_NAME=dbouvidoria
+DB_USER=root
+DB_PASS=
+
+# URL — altere se mudar o nome da pasta
+APP_URL=http://localhost/projeto_final
+BASE_URL=/projeto_final/
+
+# SMTP (Gmail, por exemplo)
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=seu@email.com
+MAIL_PASSWORD=sua_senha_de_app
+MAIL_FROM_ADDRESS=seu@email.com
+MAIL_FROM_NAME=Ouvidoria do Grêmio Escolar - EEEP Dom Walfrido
+```
+
+> ⚠️ **Nunca commite o arquivo `.env`** — ele já está listado no `.gitignore`.
+
+**3. Importe o banco de dados**
+
+Abra o phpMyAdmin e execute:
 ```
 database/schema.sql
-```
-
-**3. Configure o sistema**
-
-Edite `config/config.php`:
-```php
-// Banco de dados
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'dbouvidoria');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-
-// URL — altere se mudar o nome da pasta
-define('APP_URL',  'http://localhost/projeto_final');
-define('BASE_URL', '/projeto_final/');
-
-// SMTP (Gmail, por exemplo)
-define('MAIL_HOST',     'smtp.gmail.com');
-define('MAIL_PORT',     587);
-define('MAIL_USERNAME', 'seu@email.com');
-define('MAIL_PASSWORD', 'sua_senha_de_app');
 ```
 
 **4. Acesse no navegador**
@@ -104,7 +112,7 @@ http://localhost/projeto_final
 | Administrador | `admin@gremio.com` | `123456` |
 | Aluno teste | `aluno@gremio.com` | `123456` |
 
-> ⚠️ Troque as senhas padrão antes de colocar em produção.
+> ⚠️ Troque as senhas padrão imediatamente após a primeira instalação.
 
 ---
 
@@ -113,6 +121,9 @@ http://localhost/projeto_final
 ```
 projeto_final/
 │
+├── .env                           ← 🔒 Credenciais reais (não commitar)
+├── .env.example                   ← Modelo público para o .env
+├── .gitignore
 ├── index.php                      ← Página inicial
 │
 ├── app/
@@ -140,13 +151,13 @@ projeto_final/
 │
 ├── config/
 │   ├── bootstrap.php              ← Include único para todas as páginas
-│   ├── config.php                 ← ⚙️ Configurações (banco, e-mail, URL)
+│   ├── config.php                 ← Lê variáveis do .env (sem credenciais hardcoded)
 │   ├── paths.php                  ← Constantes de caminho
 │   └── functions.php              ← Funções globais
 │
 ├── includes/
-│   ├── header.php                 ← Topbar, drawer mobile, Bootstrap CSS
-│   └── footer.php                 ← Bootstrap JS, scripts globais
+│   ├── header.php
+│   └── footer.php
 │
 ├── lib/                           ← PHPMailer
 ├── storage/
@@ -154,7 +165,7 @@ projeto_final/
 │   └── manifestacoes/             ← Anexos das manifestações
 │
 └── database/
-    └── schema.sql
+    └── schema.sql                 ← Estrutura completa + dados iniciais
 ```
 
 ---
@@ -195,35 +206,71 @@ header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . $protocolo);
 <a href="<?= $_base ?>app/manifestacao.php">Fazer Manifestação</a>
 ```
 
+Todo formulário `method="post"` deve incluir o token CSRF:
+
+```php
+<form method="post">
+  <?= csrfInput() ?>
+  <!-- campos do formulário -->
+</form>
+```
+
 ---
 
 ## Segurança
 
-- Senhas armazenadas com `password_hash()` (bcrypt, custo 12)
-- Todas as queries usam **PDO com prepared statements**
-- Saída de dados sempre sanitizada via `e()` (wrapper de `htmlspecialchars`)
-- Uploads validados por MIME type e extensão
+- **Credenciais via `.env`** — nenhuma senha ou chave hardcoded no código-fonte
+- **Proteção CSRF** em todos os formulários POST (token por sessão)
+- **Rate limiting** no login e na recuperação de senha (10 tentativas / 10 min)
+- **Session fixation** prevenida com `session_regenerate_id(true)` após login
+- **Cookies seguros** — `HttpOnly`, `SameSite=Strict`, `Secure` (em HTTPS)
+- **Senhas** armazenadas com `password_hash()` (bcrypt) — sem fallback plaintext
+- **Prepared statements** em todas as queries (PDO com `EMULATE_PREPARES = false`)
+- **Upload** validado por MIME type real (`finfo`) + extensão + `getimagesize()` para imagens
+- **Mensagens de erro genéricas** no login — não revelam se o e-mail existe
+- **Token de reset** gerado com `random_bytes(32)`, armazenado como `sha256`, expira em 1 hora
+- **Redefinição de senha** via transação — atualiza apenas a tabela correta (adm ou usuário)
+- **Notificações** com allowlist para o nome da coluna (previne SQL injection futuro)
 - Pasta `storage/` protegida por `.htaccess` (bloqueia execução de PHP)
-- Tokens de reset de senha com expiração de 1 hora
-- Sessões PHP com regeneração de ID no login
 
 ---
 
 ## Changelog
 
-### v1.5.0 — atual
+### v2.0.0 — atual
+**Segurança**
+- Credenciais movidas para `.env` (sem mais hardcode em `config.php`)
+- Proteção CSRF implementada em todos os formulários POST
+- Rate limiting no login (10 tentativas/10 min) e na recuperação de senha (3 envios/15 min)
+- `session_regenerate_id(true)` após autenticação bem-sucedida (previne session fixation)
+- Cookies com flags `HttpOnly`, `SameSite=Strict` e `Secure`
+- `senhaConfere()` — removido fallback inseguro que comparava hash com texto puro
+- Upload de arquivos valida MIME type pelo conteúdo real (`finfo`), não pelo nome
+- Mensagens de erro no login agora são genéricas (não revelam e-mail válido ou não)
+- Token de recuperação de senha: armazenado como `sha256`, expiração de 1 hora
+- `atualizarSenhaPorReset()`: usa transação e atualiza apenas a tabela certa
+
+**Lógica**
+- Todo DDL (`ALTER TABLE`, `CREATE TABLE`) removido do runtime — schema centralizado em `database/schema.sql`
+- Avaliação por estrelas em `acompanhar.php`: adicionado ownership check (usuário só avalia suas próprias manifestações)
+- Notificação de resposta do aluno agora é enviada a **todos os admins** (antes só o primeiro)
+- URL do link de recuperação de senha corrigida (antes apontava para 404)
+- Redefinição de senha: atualiza apenas a tabela correta dentro de uma transação
+- `$coluna` nas funções de notificação protegida por allowlist
+- Todos os `catch` vazios substituídos por `error_log()`
+
+**UX / Design**
+- Spinner de carregamento em todos os botões de submit
+- Mensagens de erro de autenticação unificadas e genéricas
+- Tabela `rate_limit` incluída no `schema.sql`
+
+### v1.5.0
 - Arquivar e excluir manifestações no painel do admin
-- Exportação de manifestações em CSV (compatível com Excel/LibreOffice)
-- Filtro por período (data início e fim) no painel e no dashboard
-- Paginação no painel administrativo (10 por página)
-- Filtro de período aplicável aos gráficos do dashboard
-- Avaliação de satisfação por estrelas (1–5) substituindo o sim/não
-- Campo de comentário junto à avaliação
-- Correção: campo de descrição aparecia vermelho ao carregar a página
-- Correção: foto de perfil não carregava após o upload
-- Correção: notificações de nova manifestação levavam para página 404
-- Correção: CSS/JS não carregava em nenhuma página (BASE_URL incorreta)
-- Melhorias de responsividade em mobile para todas as telas
+- Exportação de manifestações em CSV
+- Filtro por período no painel e no dashboard
+- Paginação no painel administrativo
+- Avaliação de satisfação por estrelas (1–5)
+- Correções de CSS/JS e responsividade mobile
 
 ### v1.0.0
 - Lançamento inicial
