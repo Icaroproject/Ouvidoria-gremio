@@ -3,7 +3,7 @@
 
 > Sistema web de ouvidoria escolar desenvolvido para o Grêmio Estudantil da EEEP Dom Walfrido Teixeira Vieira. Permite que alunos, responsáveis, professores e servidores registrem manifestações de forma anônima ou identificada, com acompanhamento em tempo real por protocolo.
 
-**Versão:** `2.0.2`  
+**Versão:** `2.0.1`  
 **Stack:** PHP 8.2 · MySQL · Bootstrap 5 · Chart.js · PHPMailer  
 **Ambiente:** Apache (XAMPP/WAMP) · `localhost`
 
@@ -258,7 +258,7 @@ Todo formulário `method="post"` deve incluir o token CSRF:
 
 ## Changelog
 
-### v2.0.2 — atual
+### v2.0.1.1 — atual
 **Banco de dados / Instalação**
 - `database/import_all.sql` criado: arquivo único de importação que reúne schema completo + seed de desenvolvimento, na ordem correta com `FOREIGN_KEY_CHECKS` desativado para evitar erros de constraint — **agora basta importar um único arquivo**
 - `database/migrate_indexes.sql` corrigido: `ADD KEY` simples substituído por `DROP KEY IF EXISTS` + `ADD KEY`, tornando o script idempotente (não falha se o índice já existir)
