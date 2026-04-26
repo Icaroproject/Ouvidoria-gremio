@@ -21,8 +21,8 @@ if (!$reset) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     validarCSRF();
 
-    $novaSenha      = trim($_POST['nova_senha']      ?? '');
-    $confirmarSenha = trim($_POST['confirmar_senha'] ?? '');
+    $novaSenha      = $_POST['nova_senha']      ?? '';   // SEM trim
+    $confirmarSenha = $_POST['confirmar_senha'] ?? '';   // SEM trim
 
     if ($novaSenha === '' || $confirmarSenha === '') {
         flash('erro', 'Preencha os dois campos de senha.');
@@ -32,6 +32,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (mb_strlen($novaSenha) < 8) {
         flash('erro', 'A nova senha deve ter pelo menos 8 caracteres.');
+        header('Location: ' . BASE_URL . 'app/auth/reset_password.php?token=' . urlencode($token));
+        exit;
+    }
+
+    if (mb_strlen($novaSenha) > 72) {
+        flash('erro', 'A senha deve ter no máximo 72 caracteres.');
         header('Location: ' . BASE_URL . 'app/auth/reset_password.php?token=' . urlencode($token));
         exit;
     }
@@ -81,7 +87,11 @@ require_once __DIR__ . '/../../includes/header.php';
 
         <div class="form-group">
           <label for="nova_senha">Nova senha</label>
-          <input type="password" name="nova_senha" id="nova_senha" class="form-control" placeholder="Digite a nova senha" required>
+          <input type="password" name="nova_senha" id="cadSenha" class="form-control" placeholder="Digite a nova senha" required>
+          <div class="forca-wrap">
+            <div class="forca-trilho"><div id="barraSenha"></div></div>
+            <span id="labelSenha"></span>
+          </div>
         </div>
 
         <div class="form-group">
@@ -102,6 +112,10 @@ document.getElementById('formResetPassword').addEventListener('submit', function
   const btn = document.getElementById('btnReset');
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Salvando...';
+  const status = document.createElement('p');
+  status.style.cssText = 'font-size:.83rem;color:var(--texto-suave);margin-top:10px;text-align:center;';
+  status.textContent = 'Atualizando sua senha, aguarde…';
+  btn.parentNode.insertBefore(status, btn.nextSibling);
 });
 </script>
 

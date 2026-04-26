@@ -33,10 +33,39 @@ require_once __DIR__ . '/../../includes/header.php';
           <i class="fa-solid fa-right-to-bracket"></i> Voltar para login
         </a>
 
-        <a href="<?= $_base ?>app/auth/forgot_password.php" class="topbar-btn topbar-btn-login" style="text-decoration:none;">
-          Tentar novamente
-        </a>
+        <!-- Botão de reenvio com cooldown de 60 s -->
+        <button id="btnReenviar" disabled
+          style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:12px;border:2px solid var(--verde,#1a6b40);background:transparent;color:var(--verde,#1a6b40);font-weight:700;font-size:0.95rem;cursor:not-allowed;opacity:.6;transition:all .2s;">
+          <i class="fa-solid fa-rotate-right"></i>
+          <span id="btnReenviarLabel">Reenviar em <strong id="contadorReenvio">60</strong>s</span>
+        </button>
       </div>
+
+      <script>
+      (function () {
+        var btn      = document.getElementById('btnReenviar');
+        var label    = document.getElementById('btnReenviarLabel');
+        var contador = document.getElementById('contadorReenvio');
+        var ESPERA   = 60;
+        var restante = ESPERA;
+
+        var iv = setInterval(function () {
+          restante--;
+          if (contador) contador.textContent = restante;
+
+          if (restante <= 0) {
+            clearInterval(iv);
+            btn.disabled = false;
+            btn.style.cursor  = 'pointer';
+            btn.style.opacity = '1';
+            label.innerHTML   = '<i class="fa-solid fa-rotate-right"></i> Reenviar e-mail';
+            btn.addEventListener('click', function () {
+              window.location.href = '<?= $_base ?>app/auth/forgot_password.php';
+            });
+          }
+        }, 1000);
+      })();
+      </script>
     </div>
   </div>
 </section>

@@ -1,6 +1,12 @@
 <?php
 require_once __DIR__ . '/../config/bootstrap.php';
 
+// Administrador não deve acessar a página de manifestação — redireciona para o painel
+if (administradorLogado()) {
+    header('Location: ' . BASE_URL . 'app/painel/adm.php');
+    exit;
+}
+
 $pdo = conectarPDO();
 $tipoSelecionado = $_GET['tipo'] ?? ($_POST['tipo'] ?? '');
 
@@ -52,8 +58,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if (mb_strlen($dadosFormulario['assunto']) > 180) {
+        flash('erro', 'O assunto deve ter no máximo 180 caracteres.');
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+        exit;
+    }
+
     if ($dadosFormulario['descricao'] === '' || mb_strlen($dadosFormulario['descricao']) < 15) {
         flash('erro', 'Descreva a manifestação com pelo menos 15 caracteres.');
+        header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+        exit;
+    }
+
+    if (mb_strlen($dadosFormulario['descricao']) > 5000) {
+        flash('erro', 'A descrição deve ter no máximo 5000 caracteres.');
         header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
         exit;
     }
@@ -62,6 +80,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('erro', 'Informe um e-mail válido para retorno ou deixe o campo em branco.');
         header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
         exit;
+    }
+
+    // Valida data_ocorrencia: formato correto e não futura
+    if ($dadosFormulario['data_ocorrencia'] !== '') {
+        $dataObj = DateTime::createFromFormat('Y-m-d', $dadosFormulario['data_ocorrencia']);
+        $dataValida = $dataObj && $dataObj->format('Y-m-d') === $dadosFormulario['data_ocorrencia'];
+        if (!$dataValida) {
+            flash('erro', 'Data de ocorrência inválida.');
+            header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+            exit;
+        }
+        if ($dataObj > new DateTime('today')) {
+            flash('erro', 'A data de ocorrência não pode ser no futuro.');
+            header('Location: ' . BASE_URL . 'app/manifestacao.php?tipo=' . urlencode($dadosFormulario['tipo']) . '&modo=' . urlencode($modoEnvio));
+            exit;
+        }
     }
 
     $stmtTipo = $pdo->prepare('SELECT IDtipo, descricao FROM tipos WHERE descricao = :descricao LIMIT 1');
@@ -78,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nomeManifestante  = $anonimo ? 'Anônimo' : ($dadosFormulario['nome'] !== '' ? $dadosFormulario['nome'] : 'Identificado');
     $perfilManifestante = $anonimo
         ? 'Anônimo'
-        : ($dadosFormulario['perfil'] !== '' ? $dadosFormulario['perfil'] : 'Comunidade');
+        : ($dadosFormulario['perfil'] !== '' ? $dadosFormulario['perfil'] : 'Não informado');
 
     $usuarioId = null;
     if (usuarioLogado() && !$anonimo && isset($_SESSION['usuario']['id'])) {
@@ -90,41 +124,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    $protocoloGerado = gerarProtocoloManifestacao();
+    // INSERT com retry automático em caso de colisão de protocolo (SQLSTATE 23000).
+    // A constraint UNIQUE(protocolo) no banco é a barreira definitiva contra race conditions.
+    $idManifestInserted = null;
+    for ($tentativa = 0; $tentativa < 5; $tentativa++) {
+        $protocoloGerado = gerarProtocoloUnico($pdo);
 
-    $stmt = $pdo->prepare('
-        INSERT INTO tbmanifest (
-            IDusu, IDadm, IDtipo, protocolo, assunto, manifest, status,
-            feedback, contato, nome_manifestante, perfil_manifestante,
-            turma_setor, setor_relacionado, data_ocorrencia, criado_em
-        ) VALUES (
-            :idusu, NULL, :idtipo, :protocolo, :assunto, :manifest, :status,
-            NULL, :contato, :nome_manifestante, :perfil_manifestante,
-            :turma_setor, :setor_relacionado, :data_ocorrencia, NOW()
-        )
-    ');
+        $stmt = $pdo->prepare('
+            INSERT INTO tbmanifest (
+                IDusu, IDadm, IDtipo, protocolo, assunto, manifest, status,
+                feedback, contato, nome_manifestante, perfil_manifestante,
+                turma_setor, setor_relacionado, data_ocorrencia, criado_em
+            ) VALUES (
+                :idusu, NULL, :idtipo, :protocolo, :assunto, :manifest, :status,
+                NULL, :contato, :nome_manifestante, :perfil_manifestante,
+                :turma_setor, :setor_relacionado, :data_ocorrencia, NOW()
+            )
+        ');
 
-    $stmt->bindValue(':idusu',               $usuarioId,                    $usuarioId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-    $stmt->bindValue(':idtipo',              (int) $tipoBanco['IDtipo'],    PDO::PARAM_INT);
-    $stmt->bindValue(':protocolo',           $protocoloGerado,              PDO::PARAM_STR);
-    $stmt->bindValue(':assunto',             $dadosFormulario['assunto'],   PDO::PARAM_STR);
-    $stmt->bindValue(':manifest',            $dadosFormulario['descricao'], PDO::PARAM_STR);
-    $stmt->bindValue(':status',              'Recebida',                    PDO::PARAM_STR);
-    $stmt->bindValue(':contato',             $dadosFormulario['email'] !== '' ? $dadosFormulario['email'] : null,
-                                             $dadosFormulario['email'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
-    $stmt->bindValue(':nome_manifestante',   $nomeManifestante,             PDO::PARAM_STR);
-    $stmt->bindValue(':perfil_manifestante', $perfilManifestante,           PDO::PARAM_STR);
-    $stmt->bindValue(':turma_setor',         $dadosFormulario['turma_setor'] !== '' ? $dadosFormulario['turma_setor'] : null,
-                                             $dadosFormulario['turma_setor'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
-    $stmt->bindValue(':data_ocorrencia',
-        $dadosFormulario['data_ocorrencia'] !== '' ? $dadosFormulario['data_ocorrencia'] : null,
-        $dadosFormulario['data_ocorrencia'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
-    );
-    $stmt->bindValue(':setor_relacionado',   $dadosFormulario['setor_relacionado'] !== '' ? $dadosFormulario['setor_relacionado'] : null,
-                                             $dadosFormulario['setor_relacionado'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':idusu',               $usuarioId,                    $usuarioId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
+        $stmt->bindValue(':idtipo',              (int) $tipoBanco['IDtipo'],    PDO::PARAM_INT);
+        $stmt->bindValue(':protocolo',           $protocoloGerado,              PDO::PARAM_STR);
+        $stmt->bindValue(':assunto',             $dadosFormulario['assunto'],   PDO::PARAM_STR);
+        $stmt->bindValue(':manifest',            $dadosFormulario['descricao'], PDO::PARAM_STR);
+        $stmt->bindValue(':status',              'Recebida',                    PDO::PARAM_STR);
+        $stmt->bindValue(':contato',             $dadosFormulario['email'] !== '' ? $dadosFormulario['email'] : null,
+                                                 $dadosFormulario['email'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':nome_manifestante',   $nomeManifestante,             PDO::PARAM_STR);
+        $stmt->bindValue(':perfil_manifestante', $perfilManifestante,           PDO::PARAM_STR);
+        $stmt->bindValue(':turma_setor',         $dadosFormulario['turma_setor'] !== '' ? $dadosFormulario['turma_setor'] : null,
+                                                 $dadosFormulario['turma_setor'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->bindValue(':data_ocorrencia',
+            $dadosFormulario['data_ocorrencia'] !== '' ? $dadosFormulario['data_ocorrencia'] : null,
+            $dadosFormulario['data_ocorrencia'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL
+        );
+        $stmt->bindValue(':setor_relacionado',   $dadosFormulario['setor_relacionado'] !== '' ? $dadosFormulario['setor_relacionado'] : null,
+                                                 $dadosFormulario['setor_relacionado'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
 
-    $stmt->execute();
-    $idManifestInserted = (int) $pdo->lastInsertId();
+        try {
+            $stmt->execute();
+            $idManifestInserted = (int) $pdo->lastInsertId();
+            break; // sucesso — sai do loop
+        } catch (PDOException $e) {
+            // SQLSTATE 23000 = Integrity Constraint Violation (protocolo duplicado)
+            if ($e->getCode() === '23000' && $tentativa < 4) {
+                continue; // tenta com outro protocolo
+            }
+            throw $e; // outros erros ou esgotou tentativas — propaga
+        }
+    }
+
+    if ($idManifestInserted === null) {
+        throw new \RuntimeException('Não foi possível gerar um protocolo único após 5 tentativas.');
+    }
 
     // Registra status inicial no histórico
     registrarHistoricoStatus(
@@ -141,11 +193,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         salvarArquivosManifestacao($pdo, $idManifestInserted, $_FILES['arquivos']);
     }
 
-    // Notificação para o administrador
+    // Notificação para TODOS os administradores (consistente com acompanhar.php)
     try {
-        $stmtAdm = $pdo->query('SELECT IDadm FROM tbadm LIMIT 1');
-        $admRow = $stmtAdm->fetch(PDO::FETCH_ASSOC);
-        if ($admRow) {
+        $stmtAdmN = $pdo->query('SELECT IDadm FROM tbadm');
+        while ($admRow = $stmtAdmN->fetch(PDO::FETCH_ASSOC)) {
             criarNotificacao($pdo, [
                 'IDadm'    => (int)$admRow['IDadm'],
                 'tipo'     => 'nova_manifestacao',
@@ -334,7 +385,7 @@ require_once __DIR__ . '/../includes/header.php';
           <label for="perfil">Perfil</label>
           <select id="perfil" name="perfil" class="form-control">
             <option value="">Selecione</option>
-            <?php foreach (['Aluno(a)', 'Responsável', 'Professor(a)', 'Servidor(a)', 'Comunidade'] as $perfil): ?>
+            <?php foreach (['Aluno(a)', 'Responsável', 'Professor(a)', 'Servidor(a)'] as $perfil): ?>
               <option value="<?= e($perfil) ?>" <?= $dadosFormulario['perfil'] === $perfil ? 'selected' : '' ?>><?= e($perfil) ?></option>
             <?php endforeach; ?>
           </select>
@@ -569,7 +620,9 @@ btnAbrirConfirmacao.addEventListener('click', function () {
   const tipo      = document.getElementById('tipo').value.trim();
   const assunto   = document.getElementById('assunto').value.trim();
   const descricao = document.getElementById('descricao').value.trim();
-  const emailEl   = document.getElementById('email');
+  const emailEl   = MODO_ENVIO === 'anonimo'
+    ? document.getElementById('email_anonimo')
+    : document.getElementById('email');
   const email     = emailEl ? emailEl.value.trim() : '';
 
   if (!tipo)           { alert('Selecione o tipo da manifestação.'); return; }

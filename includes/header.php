@@ -47,9 +47,11 @@ try {
   <div class="topbar-divider"></div>
   <nav class="topbar-nav">
     <a href="<?= $_base ?>index.php"        class="topbar-link <?= topoAtivo($paginaAtual,'index.php') ?>"><i class="fa-solid fa-house"></i> Início</a>
+    <?php if (!administradorLogado()): ?>
     <a href="<?= $_base ?>app/sobre.php"        class="topbar-link <?= topoAtivo($paginaAtual,'sobre.php') ?>"><i class="fa-solid fa-school"></i> Sobre a Escola</a>
-    <a href="<?= $_base ?>app/manifestacao.php" class="topbar-link <?= topoAtivo($paginaAtual,'manifestacao.php') ?>"><i class="fa-solid fa-paper-plane"></i> Fazer Manifestação <span class="nav-badge">Novo</span></a>
+    <a href="<?= $_base ?>app/manifestacao.php" class="topbar-link <?= topoAtivo($paginaAtual,'manifestacao.php') ?>"><i class="fa-solid fa-paper-plane"></i> Fazer Manifestação</a>
     <a href="<?= $_base ?>app/acompanhar.php"   class="topbar-link <?= topoAtivo($paginaAtual,'acompanhar.php') ?>"><i class="fa-solid fa-magnifying-glass"></i> Acompanhar</a>
+    <?php endif; ?>
     <?php if (usuarioLogado()): ?>
       <a href="<?= $_base ?>app/painel/minha_conta.php" class="topbar-link <?= topoAtivo($paginaAtual,'minha_conta.php') ?>"><i class="fa-solid fa-user"></i> Minha conta</a>
     <?php elseif (!administradorLogado()): ?>
@@ -196,9 +198,11 @@ try {
   <nav class="drawer-nav">
     <div class="drawer-section-label">NAVEGAÇÃO</div>
     <a href="<?= $_base ?>index.php"        class="drawer-item <?= topoAtivo($paginaAtual,'index.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-house"></i></span><span class="drawer-item-label">Início</span></a>
+    <?php if (!administradorLogado()): ?>
     <a href="<?= $_base ?>app/sobre.php"        class="drawer-item <?= topoAtivo($paginaAtual,'sobre.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-school"></i></span><span class="drawer-item-label">Sobre a Escola</span></a>
-    <a href="<?= $_base ?>app/manifestacao.php" class="drawer-item <?= topoAtivo($paginaAtual,'manifestacao.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-paper-plane"></i></span><span class="drawer-item-label">Fazer Manifestação</span><span class="drawer-badge">Novo</span></a>
+    <a href="<?= $_base ?>app/manifestacao.php" class="drawer-item <?= topoAtivo($paginaAtual,'manifestacao.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-paper-plane"></i></span><span class="drawer-item-label">Fazer Manifestação</span></a>
     <a href="<?= $_base ?>app/acompanhar.php"   class="drawer-item <?= topoAtivo($paginaAtual,'acompanhar.php') ?>"><span class="drawer-item-icon"><i class="fa-solid fa-magnifying-glass"></i></span><span class="drawer-item-label">Acompanhar Protocolo</span></a>
+    <?php endif; ?>
     <?php if (administradorLogado() || usuarioLogado()): ?>
       <a href="<?= $_base ?>app/notificacoes.php" class="drawer-item <?= topoAtivo($paginaAtual,'notificacoes.php') ?>">
         <span class="drawer-item-icon"><i class="fa-solid fa-bell"></i></span>
@@ -287,10 +291,33 @@ try {
 
 <main class="main-content">
 <?php if ($flashData): ?>
-  <div class="flash-wrap">
-    <div class="flash-msg flash-<?= e($flashData['type']) ?>">
-      <i class="fa-solid <?= $flashData['type'] === 'sucesso' ? 'fa-circle-check' : 'fa-circle-xmark' ?>"></i>
-      <span><?= e($flashData['message']) ?></span>
+  <div class="flash-wrap" id="flashWrap">
+    <div class="flash-msg flash-<?= e($flashData['type']) ?>" id="flashMsg" role="alert" aria-live="assertive">
+      <i class="fa-solid <?= $flashData['type'] === 'sucesso' ? 'fa-circle-check' : 'fa-circle-xmark' ?>" style="flex-shrink:0;margin-top:1px;"></i>
+      <span style="flex:1;"><?= e($flashData['message']) ?></span>
+      <button id="flashClose" aria-label="Fechar" style="background:none;border:none;cursor:pointer;padding:0 0 0 8px;opacity:.6;line-height:1;font-size:1rem;color:inherit;" onclick="fecharFlash()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <div id="flashProgress" style="position:absolute;bottom:0;left:0;height:3px;border-radius:0 0 12px 12px;width:100%;background:currentColor;opacity:.25;transform-origin:left;animation:flashBar 6s linear forwards;"></div>
     </div>
   </div>
+  <style>
+    #flashMsg { position:relative; overflow:hidden; }
+    @keyframes flashBar { from{transform:scaleX(1)} to{transform:scaleX(0)} }
+  </style>
+  <script>
+    (function() {
+      var timer = setTimeout(fecharFlash, 6000);
+      function fecharFlash() {
+        clearTimeout(timer);
+        var el = document.getElementById('flashMsg');
+        if (!el) return;
+        el.style.transition = 'opacity .3s ease, transform .3s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-8px)';
+        setTimeout(function(){ var w = document.getElementById('flashWrap'); if(w) w.remove(); }, 320);
+      }
+      window.fecharFlash = fecharFlash;
+    })();
+  </script>
 <?php endif; ?>

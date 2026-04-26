@@ -47,11 +47,6 @@ document.addEventListener('DOMContentLoaded', () => {
   marcarAtivo('.topbar-link');
   marcarAtivo('.drawer-item');
 
-  const flash = document.querySelector('.flash-msg');
-  if (flash) {
-    setTimeout(() => flash.classList.add('flash-hide'), 4500);
-  }
-
   const authTabs = document.querySelectorAll('.auth-tab');
   const authPanels = document.querySelectorAll('.auth-panel');
 
@@ -73,6 +68,13 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if (authTabs.length > 0) {
     abrirPainelAuth('login');
   }
+
+  // Quando o usuário já está na página de login e clica em "Cadastrar-se"
+  // na navbar, o hash muda mas DOMContentLoaded não dispara novamente.
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#cadastro') abrirPainelAuth('cadastro');
+    else if (window.location.hash === '#login') abrirPainelAuth('login');
+  });
 
   function aplicarMascaraCPF(input) {
     input.addEventListener('input', () => {
@@ -229,10 +231,20 @@ document.addEventListener('DOMContentLoaded', () => {
       setCampoOk(cadNome); return true;
     };
     const validarCadCPF = () => {
-      if (!cadCPF.value.trim()) { setErro(cadCPF, 'Informe seu CPF.'); return false; }
-      if (!validarCPF(cadCPF.value)) { setErro(cadCPF, 'CPF inválido.'); return false; }
+      const val = cadCPF.value.trim();
+      if (!val) { setErro(cadCPF, 'Informe seu CPF.'); return false; }
+      // Só valida o algoritmo quando o CPF estiver completo (11 dígitos)
+      const digits = val.replace(/\D/g, '');
+      if (digits.length < 11) { setErro(cadCPF, 'CPF incompleto.'); return false; }
+      if (!validarCPF(val)) { setErro(cadCPF, 'CPF inválido. Verifique os números.'); return false; }
       setCampoOk(cadCPF); return true;
     };
+    // Valida em tempo real assim que o CPF atingir 11 dígitos
+    cadCPF.addEventListener('input', () => {
+      const digits = cadCPF.value.replace(/\D/g, '');
+      if (digits.length === 11) validarCadCPF();
+      else if (cadCPF.classList.contains('campo-erro') || cadCPF.classList.contains('campo-ok')) limparErro(cadCPF);
+    });
     const validarCadPerfil = () => {
       if (!cadPerfil.value.trim()) { setErro(cadPerfil, 'Selecione seu perfil.'); return false; }
       setCampoOk(cadPerfil); return true;
@@ -244,6 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const validarCadSenha = () => {
       if (cadSenha.value.length < 8) { setErro(cadSenha, 'A senha deve ter pelo menos 8 caracteres.'); return false; }
+      if (cadSenha.value.length > 72) { setErro(cadSenha, 'A senha deve ter no máximo 72 caracteres.'); return false; }
       setCampoOk(cadSenha); return true;
     };
     const validarCadConfSenha = () => {
@@ -505,16 +518,54 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 
 // ─── AUTO-DISMISS FLASH MESSAGES ─────────────────────────────────────────
+// Regras:
+//  • Mobile (pointer:coarse): 8 s mínimo (usuário lê mais devagar sem hover)
+//  • Desktop: 5 s, pausado enquanto o mouse estiver sobre a mensagem
+//  • Botão ✕ para fechar manualmente em qualquer dispositivo
 document.addEventListener('DOMContentLoaded', function () {
   const flash = document.querySelector('.flash-msg');
-  if (flash) {
-    setTimeout(() => {
-      flash.style.transition = 'opacity .4s, transform .4s';
-      flash.style.opacity = '0';
-      flash.style.transform = 'translateY(-8px)';
-      setTimeout(() => flash.parentElement && flash.parentElement.remove(), 400);
-    }, 4500);
+  if (!flash) return;
+
+  // Injeta botão de fechar se ainda não existir
+  if (!flash.querySelector('.flash-close')) {
+    const btn = document.createElement('button');
+    btn.className = 'flash-close';
+    btn.setAttribute('aria-label', 'Fechar mensagem');
+    btn.innerHTML = '&times;';
+    btn.style.cssText = [
+      'background:none;border:none;cursor:pointer;',
+      'font-size:1.25rem;line-height:1;padding:0 0 0 12px;',
+      'opacity:.6;color:inherit;flex-shrink:0;',
+    ].join('');
+    flash.style.display = flash.style.display || 'flex';
+    flash.style.alignItems = 'center';
+    flash.style.justifyContent = 'space-between';
+    flash.appendChild(btn);
   }
+
+  const isMobile = window.matchMedia('(pointer:coarse)').matches;
+  const DELAY = isMobile ? 8000 : 5000;
+
+  function dispensar() {
+    flash.style.transition = 'opacity .4s, transform .4s';
+    flash.style.opacity = '0';
+    flash.style.transform = 'translateY(-8px)';
+    setTimeout(function () {
+      flash.parentElement && flash.parentElement.remove();
+    }, 400);
+  }
+
+  let timer = setTimeout(dispensar, DELAY);
+
+  // Pausar no hover (só desktop — em mobile não há hover real)
+  if (!isMobile) {
+    flash.addEventListener('mouseenter', function () { clearTimeout(timer); });
+    flash.addEventListener('mouseleave', function () { timer = setTimeout(dispensar, 2000); });
+  }
+
+  // Fechar manualmente
+  const closeBtn = flash.querySelector('.flash-close');
+  if (closeBtn) closeBtn.addEventListener('click', dispensar);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

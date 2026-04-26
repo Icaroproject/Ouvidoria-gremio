@@ -1,6 +1,7 @@
 CREATE DATABASE IF NOT EXISTS `dbouvidoria` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `dbouvidoria`;
 
+DROP TABLE IF EXISTS `rate_limit`;
 DROP TABLE IF EXISTS `historico_status`;
 DROP TABLE IF EXISTS `notificacoes`;
 DROP TABLE IF EXISTS `respostas_manifest`;
@@ -66,6 +67,9 @@ CREATE TABLE `tbmanifest` (
   KEY `fk_manifest_usuario` (`IDusu`),
   KEY `fk_manifest_adm` (`IDadm`),
   KEY `fk_manifest_tipo` (`IDtipo`),
+  KEY `idx_manifest_status` (`status`),
+  KEY `idx_manifest_criado` (`criado_em`),
+  KEY `idx_manifest_arquivada` (`arquivada`),
   CONSTRAINT `fk_manifest_usuario` FOREIGN KEY (`IDusu`) REFERENCES `tbusuarios` (`IDusu`) ON DELETE SET NULL,
   CONSTRAINT `fk_manifest_adm` FOREIGN KEY (`IDadm`) REFERENCES `tbadm` (`IDadm`) ON DELETE SET NULL,
   CONSTRAINT `fk_manifest_tipo` FOREIGN KEY (`IDtipo`) REFERENCES `tipos` (`IDtipo`)
@@ -148,6 +152,19 @@ CREATE TABLE `password_resets` (
   KEY `idx_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE `remember_tokens` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `token_hash` VARCHAR(64)  NOT NULL UNIQUE,
+  `email`      VARCHAR(180) NOT NULL,
+  `tipo`       VARCHAR(10)  NOT NULL DEFAULT 'usuario',
+  `expires_at` DATETIME     NOT NULL,
+  `criado_em`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_token_hash` (`token_hash`),
+  KEY `idx_expires`    (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COMMENT='Tokens opacos para o cookie lembrar-me.';
+
 CREATE TABLE `rate_limit` (
   `id`        INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `chave`     VARCHAR(255) NOT NULL,
@@ -161,8 +178,5 @@ CREATE TABLE `rate_limit` (
 INSERT INTO `tipos` (`descricao`) VALUES
 ('Sugestão'), ('Elogio'), ('Reclamação'), ('Denúncia');
 
-INSERT INTO `tbadm` (`nome`, `email`, `senha`) VALUES
-('Administrador do Grêmio', 'admin@gremio.com', '$2y$12$4hNLwCASD.kp80Nld97E2uJPxlIiSmaaZ8jrrINEyaa5Tsgd9XwDa');
-
-INSERT INTO `tbusuarios` (`nome`, `cpf`, `perfil`, `email`, `telefone`, `senha`) VALUES
-('Usuário Teste', '00000000000', 'Aluno(a)', 'aluno@gremio.com', '(88) 99999-9999', '$2y$12$4hNLwCASD.kp80Nld97E2uJPxlIiSmaaZ8jrrINEyaa5Tsgd9XwDa');
+-- !! ATENÇÃO: Dados de seed de desenvolvimento foram movidos para database/seed_dev.sql !!
+-- Execute seed_dev.sql APENAS em ambientes de desenvolvimento/teste, NUNCA em produção.

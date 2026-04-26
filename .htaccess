@@ -1,0 +1,39 @@
+# =============================================================================
+# Headers de segurança HTTP
+# =============================================================================
+
+# Evita clickjacking — a página só pode ser exibida em iframe do mesmo domínio
+Header always set X-Frame-Options "SAMEORIGIN"
+
+# Evita MIME-sniffing — o browser respeita o Content-Type declarado
+Header always set X-Content-Type-Options "nosniff"
+
+# Habilita proteção XSS em browsers mais antigos
+Header always set X-XSS-Protection "1; mode=block"
+
+# Não envia o referrer ao sair do site
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Content-Security-Policy
+# Ajuste os domínios conforme os CDNs que você usa (FontAwesome, Google Fonts, etc.)
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';"
+
+# Força HTTPS (descomente em produção com HTTPS configurado)
+# Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+# =============================================================================
+# Bloqueia acesso direto a arquivos sensíveis
+# =============================================================================
+<FilesMatch "^\.env$|^\.gitignore$|^composer\.json$|^composer\.lock$">
+    Require all denied
+</FilesMatch>
+
+# Bloqueia debug.php diretamente (defesa em profundidade além do DEV_MODE)
+<Files "debug.php">
+    Require all denied
+</Files>
+
+# =============================================================================
+# Configurações gerais
+# =============================================================================
+Options -Indexes

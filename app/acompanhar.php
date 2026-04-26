@@ -45,8 +45,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     $protocolo  = trim($_POST['protocolo'] ?? '');
     $mensagem   = trim($_POST['mensagem'] ?? '');
     if ($idManifest > 0 && $mensagem !== '') {
+        if (mb_strlen($mensagem) > 2000) {
+            flash('erro', 'A mensagem deve ter no máximo 2000 caracteres.');
+            header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . urlencode($protocolo));
+            exit;
+        }
         $pdo2 = conectarPDO();
-        garantirTabelasExtras($pdo2);
         // Verifica que a manifestação pertence ao usuário logado
         $stmtOwn = $pdo2->prepare('SELECT IDusu FROM tbmanifest WHERE IDmanifest=:id LIMIT 1');
         $stmtOwn->execute([':id'=>$idManifest]);
@@ -80,6 +84,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nota_satisfacao'])) {
     validarCSRF();
 
+    // Avaliação exige usuário logado — manifestações anônimas não podem ser avaliadas
+    if (!usuarioLogado()) {
+        flash('erro', 'Faça login para avaliar sua manifestação.');
+        header('Location: ' . BASE_URL . 'app/auth/login.php');
+        exit;
+    }
+
     $idManifest = (int) ($_POST['id_manifest'] ?? 0);
     $nota       = (int) $_POST['nota_satisfacao'];
     $comentario = trim($_POST['comentario_satisfacao'] ?? '');
@@ -88,21 +99,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nota_satisfacao'])) {
         try {
             $pdo = conectarPDO();
 
-            // Verifica que a manifestação pertence ao usuário logado (ownership check)
-            if (usuarioLogado()) {
-                $stmtOwn = $pdo->prepare('SELECT IDusu FROM tbmanifest WHERE IDmanifest = :id LIMIT 1');
-                $stmtOwn->execute([':id' => $idManifest]);
-                $owner = $stmtOwn->fetch();
-                if (!$owner || (int)$owner['IDusu'] !== (int)$_SESSION['usuario']['id']) {
-                    flash('erro', 'Você não tem permissão para avaliar esta manifestação.');
-                    header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . urlencode($protocolo));
-                    exit;
-                }
+            // Verifica que a manifestação pertence ao usuário logado
+            $stmtOwn = $pdo->prepare('SELECT IDusu, nota_satisfacao FROM tbmanifest WHERE IDmanifest = :id LIMIT 1');
+            $stmtOwn->execute([':id' => $idManifest]);
+            $owner = $stmtOwn->fetch();
+
+            if (!$owner || (int)$owner['IDusu'] !== (int)$_SESSION['usuario']['id']) {
+                flash('erro', 'Você não tem permissão para avaliar esta manifestação.');
+                header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . urlencode($protocolo));
+                exit;
             }
 
-            // DDL removido do runtime — colunas já criadas via schema.sql
-            $pdo->prepare('UPDATE tbmanifest SET nota_satisfacao = :nota, comentario_satisfacao = :com WHERE IDmanifest = :id')
-                ->execute([':nota' => $nota, ':com' => $comentario !== '' ? $comentario : null, ':id' => $idManifest]);
+            // Impede reavaliação: cada manifestação só pode ser avaliada uma vez
+            if ($owner['nota_satisfacao'] !== null) {
+                flash('erro', 'Você já avaliou esta manifestação.');
+                header('Location: ' . BASE_URL . 'app/acompanhar.php?protocolo=' . urlencode($protocolo));
+                exit;
+            }
+
+            // UPDATE inclui AND IDusu como segunda barreira no banco
+            $pdo->prepare('UPDATE tbmanifest SET nota_satisfacao = :nota, comentario_satisfacao = :com WHERE IDmanifest = :id AND IDusu = :uid')
+                ->execute([
+                    ':nota' => $nota,
+                    ':com'  => $comentario !== '' ? $comentario : null,
+                    ':id'   => $idManifest,
+                    ':uid'  => (int)$_SESSION['usuario']['id'],
+                ]);
 
             flash('sucesso', 'Obrigado pela sua avaliação!');
         } catch (PDOException $e) {
@@ -117,18 +139,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['nota_satisfacao'])) {
 if ($protocolo !== '') {
     try {
         $pdo = conectarPDO();
-        garantirTabelasExtras($pdo);
-        $stmt = $pdo->prepare('
-            SELECT m.*, t.descricao AS tipo_descricao
-            FROM tbmanifest m
-            INNER JOIN tipos t ON t.IDtipo = m.IDtipo
-            WHERE m.protocolo = :protocolo
-            LIMIT 1
-        ');
-        $stmt->execute([':protocolo' => $protocolo]);
-        $manifestacao = $stmt->fetch();
-        if (!$manifestacao) {
-            $erro = 'Protocolo não encontrado. Verifique o código e tente novamente.';
+
+        // Rate limiting: máximo 30 buscas por IP a cada 10 minutos
+        // Evita enumeração de protocolos por força bruta
+        $chaveRL = 'busca_protocolo:' . ($_SERVER['REMOTE_ADDR'] ?? '');
+        if (verificarRateLimit($pdo, $chaveRL, 30, 600)) {
+            $erro = 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+        } else {
+            $stmt = $pdo->prepare('
+                SELECT m.*, t.descricao AS tipo_descricao
+                FROM tbmanifest m
+                INNER JOIN tipos t ON t.IDtipo = m.IDtipo
+                WHERE m.protocolo = :protocolo
+                LIMIT 1
+            ');
+            $stmt->execute([':protocolo' => $protocolo]);
+            $manifestacao = $stmt->fetch();
+            if (!$manifestacao) {
+                registrarTentativaFalhada($pdo, $chaveRL);
+                $erro = 'Protocolo não encontrado. Verifique o código e tente novamente.';
+            }
         }
     } catch (PDOException $e) {
         $erro = 'Não foi possível consultar o banco de dados.';

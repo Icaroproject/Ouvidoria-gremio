@@ -14,8 +14,20 @@ $dashFim       = trim($_GET['dash_fim']    ?? '');
 $wherePeriodo  = '';
 $paramsPeriodo = [];
 
-if ($dashInicio) { $wherePeriodo .= ' AND DATE(criado_em) >= :di'; $paramsPeriodo[':di'] = $dashInicio; }
-if ($dashFim)    { $wherePeriodo .= ' AND DATE(criado_em) <= :df'; $paramsPeriodo[':df'] = $dashFim; }
+// Valida formato YYYY-MM-DD antes de usar no SQL (evita datas malformadas)
+$reData = '/^\d{4}-\d{2}-\d{2}$/';
+if ($dashInicio && preg_match($reData, $dashInicio) && strtotime($dashInicio) !== false) {
+    $wherePeriodo .= ' AND DATE(criado_em) >= :di';
+    $paramsPeriodo[':di'] = $dashInicio;
+} else {
+    $dashInicio = '';
+}
+if ($dashFim && preg_match($reData, $dashFim) && strtotime($dashFim) !== false) {
+    $wherePeriodo .= ' AND DATE(criado_em) <= :df';
+    $paramsPeriodo[':df'] = $dashFim;
+} else {
+    $dashFim = '';
+}
 
 try {
     $pdo = conectarPDO();

@@ -1,6 +1,12 @@
 # Segredos — NUNCA commitar
 .env
 
+# Arquivo de debug — não deve ir para produção
+debug.php
+
+# Seed de desenvolvimento — contém credenciais de teste
+database/seed_dev.sql
+
 # Storage de arquivos dos usuários
 storage/fotos/*
 storage/manifestacoes/*

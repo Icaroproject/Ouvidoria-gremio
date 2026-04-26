@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo = conectarPDO();
 
         // Rate limiting: máximo 3 envios por e-mail a cada 15 minutos
-        $chaveRL = 'reset:' . $email;
+        $chaveRL = 'reset:' . substr($email, 0, 100);
         if (verificarRateLimit($pdo, $chaveRL, 3, 900)) {
             // Redireciona para a mesma tela de "e-mail enviado" sem revelar o bloqueio
             header('Location: ' . BASE_URL . 'app/auth/email_enviado.php');
@@ -90,6 +90,10 @@ document.getElementById('formForgotPassword').addEventListener('submit', functio
   const btn = document.getElementById('btnEnviar');
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Enviando...';
+  const status = document.createElement('p');
+  status.style.cssText = 'font-size:.83rem;color:var(--texto-suave);margin-top:10px;text-align:center;';
+  status.textContent = 'Verificando e-mail e enviando o link, aguarde…';
+  btn.parentNode.insertBefore(status, btn.nextSibling);
 });
 </script>
 

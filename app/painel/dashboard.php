@@ -132,7 +132,7 @@ require_once __DIR__ . '/../../includes/header.php';
   </div>
 </div>
 
-<section style="background:var(--bg);padding:32px 40px 48px;">
+<section style="background:var(--bg);padding:clamp(20px,4vw,48px) clamp(14px,4vw,40px);">
 <div style="max-width:1300px;margin:0 auto;">
 
   <!-- Filtro de período -->

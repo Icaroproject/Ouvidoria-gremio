@@ -1,5 +1,12 @@
 <?php
+// ── SEGURANÇA: nunca deixe este arquivo acessível em produção ─────────────
+// Defina DEV_MODE=true no .env apenas em ambiente local/dev.
+// Em produção a constante não existirá e o script encerra imediatamente.
 require_once __DIR__ . '/config/bootstrap.php';
+if (!defined('DEV_MODE') || DEV_MODE !== true) {
+    http_response_code(404);
+    exit('Not found.');
+}
 echo '<pre>';
 echo 'BASE_URL: ' . BASE_URL . "\n";
 echo 'APP_URL: ' . APP_URL . "\n";

@@ -4,7 +4,6 @@ exigirLoginAdm();
 
 $pdo   = conectarPDO();
 $idAdm = (int)$_SESSION['admin']['id'];
-garantirTabelasExtras($pdo);
 
 // ── POST handler ──────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['acao'])) {
@@ -229,6 +228,7 @@ $resumo = $pdo->query("
            SUM(status='Em andamento') AS andamento,
            SUM(status='Resolvida') AS resolvidas
     FROM tbmanifest
+    WHERE arquivada = 0
 ")->fetch() ?: ['total'=>0,'recebidas'=>0,'andamento'=>0,'resolvidas'=>0];
 
 $tituloPagina = 'Painel ADM — Ouvidoria do Grêmio';

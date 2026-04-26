@@ -6,7 +6,7 @@ $pdo = conectarPDO();
 garantirTabelasExtras($pdo);
 $idUsuario = (int) $_SESSION['usuario']['id'];
 
-$stmt = $pdo->prepare('SELECT * FROM tbusuarios WHERE IDusu = :id LIMIT 1');
+$stmt = $pdo->prepare('SELECT IDusu, nome, cpf, perfil, email, telefone, foto_perfil, senha FROM tbusuarios WHERE IDusu = :id LIMIT 1');
 $stmt->execute([':id' => $idUsuario]);
 $usuario = $stmt->fetch();
 
@@ -23,31 +23,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Upload de foto de perfil
     if ($acao === 'upload_foto') {
-        if (!empty($_FILES['foto_perfil']['tmp_name'])) {
+        if (!empty($_FILES['foto_perfil']['tmp_name']) && is_uploaded_file($_FILES['foto_perfil']['tmp_name'])) {
             $file = $_FILES['foto_perfil'];
-            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-            if (!in_array($ext, $allowed)) {
-                flash('erro', 'Formato de imagem inválido. Use JPG, PNG, WEBP ou GIF.');
-            } elseif ($file['size'] > 2 * 1024 * 1024) {
-                flash('erro', 'A imagem deve ter no máximo 2 MB.');
+
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                flash('erro', 'Erro no upload. Tente novamente.');
             } else {
-                $dir = __DIR__ . '/../../storage/fotos/';
-                if (!is_dir($dir)) mkdir($dir, 0755, true);
-                $nomeArquivo = 'user_' . $idUsuario . '_' . time() . '.' . $ext;
-                if (move_uploaded_file($file['tmp_name'], $dir . $nomeArquivo)) {
-                    // Apagar foto antiga
-                    if (!empty($usuario['foto_perfil'])) {
-                        $antiga = $dir . basename($usuario['foto_perfil']);
-                        if (file_exists($antiga)) @unlink($antiga);
-                    }
-                    // Salva apenas o nome do arquivo — URL montada com BASE_URL na exibição
-                    $updateFoto = $pdo->prepare('UPDATE tbusuarios SET foto_perfil = :foto WHERE IDusu = :id');
-                    $updateFoto->execute([':foto' => $nomeArquivo, ':id' => $idUsuario]);
-                    $usuario['foto_perfil'] = $nomeArquivo;
-                    flash('sucesso', 'Foto de perfil atualizada com sucesso!');
+                $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                $allowed = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+                // MIMEs permitidos para foto de perfil
+                $mimesPermitidos = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+                // Detecta o MIME real pelo conteúdo do arquivo (não pelo nome)
+                $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+                $mimeReal = $finfo->file($file['tmp_name']);
+
+                if (!in_array($ext, $allowed, true)) {
+                    flash('erro', 'Extensão inválida. Use JPG, PNG, WEBP ou GIF.');
+                } elseif (!in_array($mimeReal, $mimesPermitidos, true)) {
+                    flash('erro', 'Tipo de arquivo inválido. Envie apenas imagens reais.');
+                } elseif (!@getimagesize($file['tmp_name'])) {
+                    flash('erro', 'O arquivo não é uma imagem válida.');
+                } elseif ($file['size'] > 2 * 1024 * 1024) {
+                    flash('erro', 'A imagem deve ter no máximo 2 MB.');
                 } else {
-                    flash('erro', 'Não foi possível salvar a imagem. Verifique as permissões do servidor.');
+                    $dir = __DIR__ . '/../../storage/fotos/';
+                    if (!is_dir($dir)) mkdir($dir, 0755, true);
+                    $nomeArquivo = 'user_' . $idUsuario . '_' . time() . '.' . $ext;
+                    if (move_uploaded_file($file['tmp_name'], $dir . $nomeArquivo)) {
+                        // Apagar foto antiga
+                        if (!empty($usuario['foto_perfil'])) {
+                            $antiga = $dir . basename($usuario['foto_perfil']);
+                            if (file_exists($antiga)) @unlink($antiga);
+                        }
+                        $updateFoto = $pdo->prepare('UPDATE tbusuarios SET foto_perfil = :foto WHERE IDusu = :id');
+                        $updateFoto->execute([':foto' => $nomeArquivo, ':id' => $idUsuario]);
+                        $usuario['foto_perfil'] = $nomeArquivo;
+                        flash('sucesso', 'Foto de perfil atualizada com sucesso!');
+                    } else {
+                        flash('erro', 'Não foi possível salvar a imagem. Verifique as permissões do servidor.');
+                    }
                 }
             }
         } else {
@@ -65,6 +81,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($nome === '' || $email === '') {
             flash('erro', 'Nome e e-mail são obrigatórios.');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
+            exit;
+        }
+
+        if (mb_strlen($nome) > 80) {
+            flash('erro', 'O nome deve ter no máximo 80 caracteres.');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
+            exit;
+        }
+
+        if ($telefone !== '' && !preg_match('/^\(?\d{2}\)?\s?\d{4,5}-?\d{4}$/', $telefone)) {
+            flash('erro', 'Telefone inválido. Use o formato (88) 99999-9999.');
             header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
@@ -101,9 +129,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'alterar_senha') {
-        $senhaAtual = trim($_POST['senha_atual'] ?? '');
-        $novaSenha = trim($_POST['nova_senha'] ?? '');
-        $confirmarSenha = trim($_POST['confirmar_senha'] ?? '');
+        $senhaAtual     = $_POST['senha_atual']     ?? '';   // SEM trim
+        $novaSenha      = $_POST['nova_senha']      ?? '';   // SEM trim
+        $confirmarSenha = $_POST['confirmar_senha'] ?? '';   // SEM trim
 
         if ($senhaAtual === '' || $novaSenha === '' || $confirmarSenha === '') {
             flash('erro', 'Preencha todos os campos da senha.');
@@ -117,8 +145,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        if (mb_strlen($novaSenha) < 8) {
-            flash('erro', 'A nova senha deve ter pelo menos 8 caracteres.');
+        $erroSenha = validarTamanhoSenha($novaSenha);
+        if ($erroSenha) {
+            flash('erro', $erroSenha);
             header('Location: ' . BASE_URL . 'app/painel/minha_conta.php');
             exit;
         }
@@ -141,6 +170,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($acao === 'excluir_conta') {
+        $senhaConfirmacao = $_POST['senha_confirmacao'] ?? '';
+        if ($senhaConfirmacao === '') {
+            flash('erro', 'Confirme sua senha para excluir a conta.');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php#excluir');
+            exit;
+        }
+        // Busca senha atual do banco
+        $stmtSenha = $pdo->prepare('SELECT senha FROM tbusuarios WHERE IDusu = :id LIMIT 1');
+        $stmtSenha->execute([':id' => $idUsuario]);
+        $rowSenha = $stmtSenha->fetch();
+        if (!$rowSenha || !senhaConfere($senhaConfirmacao, (string)$rowSenha['senha'])) {
+            flash('erro', 'Senha incorreta. A conta não foi excluída.');
+            header('Location: ' . BASE_URL . 'app/painel/minha_conta.php#excluir');
+            exit;
+        }
         $delete = $pdo->prepare('DELETE FROM tbusuarios WHERE IDusu = :id');
         $delete->execute([':id' => $idUsuario]);
 
@@ -238,7 +282,13 @@ require_once __DIR__ . '/../../includes/header.php';
 
         <div class="form-group">
           <label for="mcNome">Nome</label>
-          <input type="text" id="mcNome" name="nome" class="form-control" value="<?= e($usuario['nome'] ?? '') ?>">
+          <input type="text" id="mcNome" name="nome" class="form-control" value="<?= e($usuario['nome'] ?? '') ?>" maxlength="80">
+        </div>
+
+        <div class="form-group">
+          <label>CPF</label>
+          <input type="text" class="form-control" value="<?= e(formatarCPF($usuario['cpf'] ?? '')) ?>" readonly disabled style="background:var(--color-background-secondary,#f4f5f0);cursor:not-allowed;">
+          <div class="form-text text-muted">O CPF não pode ser alterado após o cadastro.</div>
         </div>
 
         <div class="form-group">
@@ -256,7 +306,7 @@ require_once __DIR__ . '/../../includes/header.php';
           <label for="mcPerfil">Perfil</label>
           <select id="mcPerfil" name="perfil" class="form-control">
             <option value="">Selecione</option>
-            <?php foreach (['Aluno(a)', 'Responsável', 'Professor(a)', 'Servidor(a)', 'Comunidade'] as $perfil): ?>
+            <?php foreach (['Aluno(a)', 'Responsável', 'Professor(a)', 'Servidor(a)'] as $perfil): ?>
               <option value="<?= e($perfil) ?>" <?= ($usuario['perfil'] ?? '') === $perfil ? 'selected' : '' ?>><?= e($perfil) ?></option>
             <?php endforeach; ?>
           </select>
@@ -363,10 +413,14 @@ require_once __DIR__ . '/../../includes/header.php';
   <div class="conta-panel" id="painel-excluir">
     <div class="form-card">
       <h2 class="auth-title" style="color:#b91c1c;">Excluir conta</h2>
-      <p style="color:var(--texto-suave);margin-bottom:24px;">Esta ação é irreversível. Todos os seus dados serão removidos permanentemente.</p>
+      <p style="color:var(--texto-suave);margin-bottom:24px;">Esta ação é irreversível. Todos os seus dados serão removidos permanentemente. Confirme sua senha para continuar.</p>
       <form method="post" onsubmit="return confirm('Tem certeza que deseja excluir sua conta? Esta ação não poderá ser desfeita.');">
         <?= csrfInput() ?>
         <input type="hidden" name="acao" value="excluir_conta">
+        <div class="form-group">
+          <label for="senha_confirmacao"><i class="fa-solid fa-lock" style="color:#b91c1c;margin-right:6px"></i>Confirmar senha atual</label>
+          <input type="password" name="senha_confirmacao" id="senha_confirmacao" class="form-control" placeholder="Digite sua senha para confirmar" required>
+        </div>
         <button type="submit" class="btn-submit btn-danger">Excluir minha conta</button>
       </form>
     </div>
@@ -423,14 +477,29 @@ require_once __DIR__ . '/../../includes/header.php';
 </script>
 
 <script>
-document.querySelectorAll('form').forEach(function(form) {
-  form.addEventListener('submit', function() {
-    var btn = this.querySelector('[type=submit]');
-    if (btn) {
+(function() {
+  const mensagens = {
+    formMinhaContaDados:  'Salvando seus dados...',
+    formMinhaContaSenha:  'Alterando senha...',
+    formFoto:             'Enviando foto...',
+  };
+  document.querySelectorAll('form').forEach(function(form) {
+    form.addEventListener('submit', function() {
+      var btn = this.querySelector('[type=submit]');
+      if (!btn || btn.disabled) return;
+      var msg = mensagens[this.id] || 'Aguarde...';
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Aguarde...';
-    }
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + msg;
+      var existing = this.querySelector('.submit-status');
+      if (!existing) {
+        var status = document.createElement('p');
+        status.className = 'submit-status';
+        status.style.cssText = 'font-size:.83rem;color:var(--texto-suave);margin-top:10px;text-align:center;animation:flashIn .2s ease;';
+        status.textContent = 'Processando, aguarde…';
+        btn.parentNode.insertBefore(status, btn.nextSibling);
+      }
+    });
   });
-});
+})();
 </script>
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

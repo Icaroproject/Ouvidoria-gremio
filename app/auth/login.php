@@ -8,13 +8,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($acao === 'login') {
         $email      = trim($_POST['email'] ?? '');
-        $senha      = trim($_POST['senha'] ?? '');
-        $tipoAcesso = $_POST['tipo_acesso'] ?? 'adm';
+        $senha      = $_POST['senha'] ?? '';   // SEM trim — bcrypt é sensível a espaços
+        $tiposValidos = ['adm', 'usuario'];
+        $tipoAcesso = in_array($_POST['tipo_acesso'] ?? '', $tiposValidos, true)
+                      ? $_POST['tipo_acesso']
+                      : 'usuario';
         $lembrar    = isset($_POST['lembrar_me']);
 
         if ($email === '' || $senha === '') {
-            flash('erro', 'Preencha e-mail e senha para continuar.');
-            header('Location: ' . BASE_URL . 'app/auth/login.php');
+            $_SESSION['flash_form'] = 'Verifique seus dados e tente novamente.';
+            header('Location: ' . BASE_URL . 'app/auth/login.php#login');
             exit;
         }
 
@@ -22,10 +25,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo = conectarPDO();
 
             // Rate limiting por IP + e-mail
-            $chaveRL = 'login:' . $_SERVER['REMOTE_ADDR'] . ':' . $email;
+            $chaveRL = 'login:' . $_SERVER['REMOTE_ADDR'] . ':' . substr($email, 0, 100);
             if (verificarRateLimit($pdo, $chaveRL)) {
-                flash('erro', 'Muitas tentativas incorretas. Aguarde alguns minutos e tente novamente.');
-                header('Location: ' . BASE_URL . 'app/auth/login.php');
+                $_SESSION['flash_form'] = 'Muitas tentativas incorretas. Aguarde alguns minutos e tente novamente.';
+                header('Location: ' . BASE_URL . 'app/auth/login.php#login');
                 exit;
             }
 
@@ -34,16 +37,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([':email' => $email]);
                 $admin = $stmt->fetch();
 
-                // Mensagem genérica — não revela se o e-mail existe ou qual campo está errado
                 if (!$admin || !senhaConfere($senha, (string)$admin['senha'])) {
                     registrarTentativaFalhada($pdo, $chaveRL);
-                    flash('erro', 'E-mail ou senha incorretos.');
-                    header('Location: ' . BASE_URL . 'app/auth/login.php');
+                    $_SESSION['flash_form'] = 'Verifique seus dados e tente novamente.';
+                    header('Location: ' . BASE_URL . 'app/auth/login.php#login');
                     exit;
                 }
 
                 limparRateLimit($pdo, $chaveRL);
-                session_regenerate_id(true); // previne session fixation
+                session_regenerate_id(true);
 
                 $_SESSION['admin'] = [
                     'id'    => $admin['IDadm'],
@@ -66,13 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!$usuario || !senhaConfere($senha, (string)$usuario['senha'])) {
                 registrarTentativaFalhada($pdo, $chaveRL);
-                flash('erro', 'E-mail ou senha incorretos.');
-                header('Location: ' . BASE_URL . 'app/auth/login.php');
+                $_SESSION['flash_form'] = 'Verifique seus dados e tente novamente.';
+                header('Location: ' . BASE_URL . 'app/auth/login.php#login');
                 exit;
             }
 
             limparRateLimit($pdo, $chaveRL);
-            session_regenerate_id(true); // previne session fixation
+            session_regenerate_id(true);
 
             $_SESSION['usuario'] = [
                 'id'    => $usuario['IDusu'],
@@ -90,8 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (PDOException $e) {
             error_log('[login] ' . $e->getMessage());
-            flash('erro', 'Erro ao conectar ao banco de dados. Tente novamente.');
-            header('Location: ' . BASE_URL . 'app/auth/login.php');
+            $_SESSION['flash_form'] = 'Erro ao conectar ao banco de dados. Tente novamente.';
+            header('Location: ' . BASE_URL . 'app/auth/login.php#login');
             exit;
         }
     }
@@ -101,42 +103,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cpf       = trim($_POST['cpf']             ?? '');
         $perfil    = trim($_POST['perfil']           ?? '');
         $email     = trim($_POST['email_cadastro']   ?? '');
-        $senha     = trim($_POST['senha_cadastro']   ?? '');
-        $confirmar = trim($_POST['confirmar_senha']  ?? '');
+        $senha     = $_POST['senha_cadastro']   ?? '';   // SEM trim
+        $confirmar = $_POST['confirmar_senha']  ?? '';   // SEM trim
 
         if ($nome === '' || $cpf === '' || $email === '' || $senha === '' || $confirmar === '') {
-            flash('erro', 'Preencha os campos obrigatórios do cadastro.');
+            $_SESSION['flash_form_cad'] = 'Preencha os campos obrigatórios do cadastro.';
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
+            exit;
+        }
+
+        if (mb_strlen($nome) > 80) {
+            $_SESSION['flash_form_cad'] = 'O nome deve ter no máximo 80 caracteres.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            flash('erro', 'Informe um e-mail válido.');
+            $_SESSION['flash_form_cad'] = 'Informe um e-mail válido.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if (!validarCPF($cpf)) {
-            flash('erro', 'CPF inválido.');
+            $_SESSION['flash_form_cad'] = 'CPF inválido.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         // Valida perfil contra a lista permitida
         if ($perfil !== '' && !validarPerfil($perfil)) {
-            flash('erro', 'Perfil inválido.');
+            $_SESSION['flash_form_cad'] = 'Perfil inválido.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if ($senha !== $confirmar) {
-            flash('erro', 'As senhas não coincidem.');
+            $_SESSION['flash_form_cad'] = 'As senhas não coincidem.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
 
         if (mb_strlen($senha) < 8) {
-            flash('erro', 'A senha deve ter pelo menos 8 caracteres.');
+            $_SESSION['flash_form_cad'] = 'A senha deve ter pelo menos 8 caracteres.';
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
+            exit;
+        }
+
+        if (mb_strlen($senha) > 72) {
+            $_SESSION['flash_form_cad'] = 'A senha deve ter no máximo 72 caracteres.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
@@ -146,16 +160,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cpfLimpo = preg_replace('/\D/', '', $cpf);
 
             if (cpfJaCadastrado($pdo, $cpfLimpo)) {
-                flash('erro', 'Este CPF já está cadastrado no sistema.');
-                header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
+                $_SESSION['flash_form_cad'] = 'Este CPF já está cadastrado no sistema.';
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
                 exit;
             }
 
             $verifica = $pdo->prepare('SELECT IDusu FROM tbusuarios WHERE email = :email LIMIT 1');
             $verifica->execute([':email' => $email]);
             if ($verifica->fetch()) {
-                flash('erro', 'Já existe um cadastro com esse e-mail.');
-                header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
+                $_SESSION['flash_form_cad'] = 'Já existe um cadastro com esse e-mail.';
+            header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
                 exit;
             }
 
@@ -174,15 +188,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (PDOException $e) {
             error_log('[cadastro] ' . $e->getMessage());
-            flash('erro', 'Não foi possível concluir o cadastro. Tente novamente.');
+            $_SESSION['flash_form_cad'] = 'Não foi possível concluir o cadastro. Tente novamente.';
             header('Location: ' . BASE_URL . 'app/auth/login.php#cadastro');
             exit;
         }
     }
 }
 
-$emailLembrado = $_COOKIE['remember_email'] ?? '';
-$tipoLembrado  = $_COOKIE['remember_tipo']  ?? 'adm';
+// Resolve o cookie lembrar-me por token opaco (sem expor e-mail no cookie)
+$_lembrado     = resolverRememberMeCookie();
+$emailLembrado = $_lembrado['email'] ?? '';
+$tipoLembrado  = $_lembrado['tipo']  ?? 'adm';
 
 $tituloPagina = 'Login e Cadastro — Ouvidoria do Grêmio Escolar';
 require_once __DIR__ . '/../../includes/header.php';
@@ -211,6 +227,16 @@ require_once __DIR__ . '/../../includes/header.php';
           <?= csrfInput() ?>
           <input type="hidden" name="acao" value="login">
 
+          <?php
+            $flashForm = $_SESSION['flash_form'] ?? null;
+            unset($_SESSION['flash_form']);
+            if ($flashForm):
+          ?>
+          <div class="form-erro-inline" style="font-size:.84rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin-bottom:16px;text-align:center;">
+            <?= e($flashForm) ?>
+          </div>
+          <?php endif; ?>
+
           <div class="form-group">
             <label for="tipo_acesso">Tipo de acesso</label>
             <select name="tipo_acesso" id="tipo_acesso" class="form-control">
@@ -235,7 +261,7 @@ require_once __DIR__ . '/../../includes/header.php';
           </label>
 
           <div style="text-align:right;margin-bottom:24px">
-            <a href="<?= $_base ?>app/auth/forgot_password.php" style="font-size:0.82rem;color:var(--laranja);text-decoration:none;font-weight:600">Esqueci minha senha</a>
+            <a href="<?= BASE_URL ?>app/auth/forgot_password.php" style="font-size:0.82rem;color:var(--laranja);text-decoration:none;font-weight:600">Esqueci minha senha</a>
           </div>
 
           <button type="submit" class="btn-submit" id="btnLogin">
@@ -252,9 +278,19 @@ require_once __DIR__ . '/../../includes/header.php';
           <?= csrfInput() ?>
           <input type="hidden" name="acao" value="cadastro">
 
+          <?php
+            $flashFormC = $_SESSION['flash_form_cad'] ?? null;
+            unset($_SESSION['flash_form_cad']);
+            if ($flashFormC):
+          ?>
+          <div class="form-erro-inline" style="font-size:.84rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin-bottom:16px;text-align:center;">
+            <?= e($flashFormC) ?>
+          </div>
+          <?php endif; ?>
+
           <div class="form-group">
             <label for="cadNome">Nome completo</label>
-            <input type="text" name="nome" id="cadNome" class="form-control" placeholder="Seu nome completo">
+            <input type="text" name="nome" id="cadNome" class="form-control" placeholder="Seu nome completo" maxlength="80">
           </div>
 
           <div class="form-group">
@@ -270,7 +306,6 @@ require_once __DIR__ . '/../../includes/header.php';
               <option value="Responsável">Responsável</option>
               <option value="Professor(a)">Professor(a)</option>
               <option value="Servidor(a)">Servidor(a)</option>
-              <option value="Comunidade">Comunidade</option>
             </select>
           </div>
 
@@ -303,16 +338,135 @@ require_once __DIR__ . '/../../includes/header.php';
 </div>
 
 <script>
-// Spinner de carregamento nos botões de submit
-document.querySelectorAll('form').forEach(form => {
-  form.addEventListener('submit', function() {
-    const btn = this.querySelector('[type=submit]');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Aguarde...';
-    }
+// Feedback de envio com mensagem contextual por formulário
+(function() {
+  const mensagens = {
+    formLogin:    'Entrando...',
+    formCadastro: 'Criando sua conta...',
+  };
+
+  /* ── Tab switching ── */
+  function ativarAba(nome) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === nome));
+    document.querySelectorAll('.auth-panel').forEach(p => p.classList.toggle('active', p.id === nome));
+  }
+
+  // Abre a aba correta via hash da URL (#login ou #cadastro)
+  const hash = location.hash.replace('#', '');
+  if (hash === 'login' || hash === 'cadastro') ativarAba(hash);
+
+  // Clique nas abas
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      ativarAba(this.dataset.panel);
+      history.replaceState(null, '', '#' + this.dataset.panel);
+    });
   });
-});
+
+  /* ── Helpers ── */
+  function mostrarErro(form, msg) {
+    let box = form.querySelector('.form-erro-inline');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'form-erro-inline';
+      box.style.cssText = 'font-size:.84rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin-bottom:16px;text-align:center;';
+      // Insere no topo do formulário, após os hidden inputs
+      const firstField = form.querySelector('.form-group') || form.querySelector('[type=submit]');
+      form.insertBefore(box, firstField);
+    }
+    box.textContent = msg;
+    box.style.display = 'block';
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function limparErro(form) {
+    const box = form.querySelector('.form-erro-inline');
+    if (box) box.style.display = 'none';
+  }
+
+  function setLoading(form, msg) {
+    const btn = form.querySelector('[type=submit]');
+    if (!btn || btn.disabled) return false;
+    btn.disabled = true;
+    btn.dataset.original = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + msg;
+    let status = form.querySelector('.submit-status');
+    if (!status) {
+      status = document.createElement('p');
+      status.className = 'submit-status';
+      status.style.cssText = 'font-size:.83rem;color:var(--texto-suave);margin-top:10px;text-align:center;animation:flashIn .2s ease;';
+      btn.after(status);
+    }
+    status.textContent = 'Processando sua solicitação, por favor aguarde…';
+    return true;
+  }
+
+  /* ── Validação do formulário de LOGIN ── */
+  const formLogin = document.getElementById('formLogin');
+  if (formLogin) {
+    formLogin.addEventListener('submit', function(e) {
+      limparErro(this);
+      const email = this.querySelector('#loginEmail').value.trim();
+      const senha = this.querySelector('#loginSenha').value;
+
+      if (!email) {
+        e.preventDefault();
+        mostrarErro(this, 'Verifique seus dados e tente novamente.');
+        this.querySelector('#loginEmail').focus();
+        return;
+      }
+      if (!senha) {
+        e.preventDefault();
+        mostrarErro(this, 'Verifique seus dados e tente novamente.');
+        this.querySelector('#loginSenha').focus();
+        return;
+      }
+
+      setLoading(this, mensagens['formLogin']);
+    });
+  }
+
+  /* ── Validação do formulário de CADASTRO ── */
+  const formCadastro = document.getElementById('formCadastro');
+  if (formCadastro) {
+    formCadastro.addEventListener('submit', function(e) {
+      limparErro(this);
+      const nome    = this.querySelector('#cadNome').value.trim();
+      const cpf     = this.querySelector('#cadCPF').value.replace(/\D/g, '');
+      const perfil  = this.querySelector('#cadPerfil').value;
+      const email   = this.querySelector('#cadEmail').value.trim();
+      const senha   = this.querySelector('#cadSenha').value;
+      const conf    = this.querySelector('#cadConfSenha').value;
+
+      if (!nome) {
+        e.preventDefault(); mostrarErro(this, 'Informe seu nome completo.');
+        this.querySelector('#cadNome').focus(); return;
+      }
+      if (cpf.length !== 11) {
+        e.preventDefault(); mostrarErro(this, 'CPF inválido. Use o formato 000.000.000-00.');
+        this.querySelector('#cadCPF').focus(); return;
+      }
+      if (!perfil) {
+        e.preventDefault(); mostrarErro(this, 'Selecione seu perfil.');
+        this.querySelector('#cadPerfil').focus(); return;
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        e.preventDefault(); mostrarErro(this, 'Informe um e-mail válido.');
+        this.querySelector('#cadEmail').focus(); return;
+      }
+      if (senha.length < 8) {
+        e.preventDefault(); mostrarErro(this, 'A senha deve ter pelo menos 8 caracteres.');
+        this.querySelector('#cadSenha').focus(); return;
+      }
+      if (senha !== conf) {
+        e.preventDefault(); mostrarErro(this, 'As senhas não coincidem.');
+        this.querySelector('#cadConfSenha').focus(); return;
+      }
+
+      setLoading(this, mensagens['formCadastro']);
+    });
+  }
+})();
 </script>
 
 <?php require_once __DIR__ . '/../../includes/footer.php'; ?>

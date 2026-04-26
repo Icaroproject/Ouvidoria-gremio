@@ -27,6 +27,13 @@ if (file_exists($_envFile)) {
 }
 unset($_envFile, $lines, $_line, $parts, $k, $v);
 
+// ── Identidade da escola (personalizável via .env) ────────────────────────
+define('SCHOOL_NAME',  $_ENV['SCHOOL_NAME']  ?? 'EEEP Dom Walfrido Teixeira Vieira');
+define('SCHOOL_SHORT', $_ENV['SCHOOL_SHORT'] ?? 'Dom Walfrido');
+
+// ── Modo de desenvolvimento (NUNCA defina como true em produção) ──────────
+define('DEV_MODE', filter_var($_ENV['DEV_MODE'] ?? false, FILTER_VALIDATE_BOOLEAN));
+
 // ── Banco de dados ────────────────────────────────────────────────────────
 define('DB_HOST', $_ENV['DB_HOST'] ?? 'localhost');
 define('DB_NAME', $_ENV['DB_NAME'] ?? 'dbouvidoria');

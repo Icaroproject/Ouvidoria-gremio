@@ -19,13 +19,36 @@ if (!preg_match('/^GRE-\d{8}-[A-Z0-9]{6}$/', $protocolo)) {
 try {
     $pdo = conectarPDO();
 
+    // Rate limiting: máximo 60 requisições por IP a cada 60 segundos
+    $chaveRL = 'chat_poll:' . ($_SERVER['REMOTE_ADDR'] ?? '');
+    if (verificarRateLimit($pdo, $chaveRL, 60, 60)) {
+        http_response_code(429);
+        echo json_encode(['ok' => false, 'erro' => 'Muitas requisições. Aguarde um momento.']);
+        exit;
+    }
+    registrarTentativaFalhada($pdo, $chaveRL);
+
     // Buscar manifestação
-    $stmt = $pdo->prepare('SELECT IDmanifest, status FROM tbmanifest WHERE protocolo = :p LIMIT 1');
+    $stmt = $pdo->prepare('SELECT IDmanifest, IDusu, status FROM tbmanifest WHERE protocolo = :p LIMIT 1');
     $stmt->execute([':p' => $protocolo]);
     $manifest = $stmt->fetch();
 
     if (!$manifest) {
         echo json_encode(['ok' => false, 'erro' => 'Protocolo não encontrado.']);
+        exit;
+    }
+
+    // Verifica ownership: se o usuário estiver logado, a manifestação deve pertencer a ele.
+    // Manifestações anônimas (IDusu = NULL) são acessíveis apenas por quem tem o protocolo.
+    // Manifestações vinculadas a uma conta só podem ser lidas pelo dono da conta.
+    if (!empty($manifest['IDusu']) && usuarioLogado()) {
+        if ((int)$manifest['IDusu'] !== (int)$_SESSION['usuario']['id']) {
+            echo json_encode(['ok' => false, 'erro' => 'Acesso negado.']);
+            exit;
+        }
+    } elseif (!empty($manifest['IDusu']) && !usuarioLogado()) {
+        // Manifestação de conta, mas sem sessão — não expõe o histórico
+        echo json_encode(['ok' => false, 'erro' => 'Faça login para acompanhar esta manifestação.']);
         exit;
     }
 

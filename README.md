@@ -1,9 +1,9 @@
 # Ouvidoria do Grêmio Escolar
 ### EEEP Dom Walfrido Teixeira Vieira · Sobral, Ceará
 
-> Sistema web de ouvidoria escolar desenvolvido para o Grêmio Estudantil da EEEP Dom Walfrido Teixeira Vieira. Permite que alunos, responsáveis e comunidade registrem manifestações de forma anônima ou identificada, com acompanhamento em tempo real por protocolo.
+> Sistema web de ouvidoria escolar desenvolvido para o Grêmio Estudantil da EEEP Dom Walfrido Teixeira Vieira. Permite que alunos, responsáveis, professores e servidores registrem manifestações de forma anônima ou identificada, com acompanhamento em tempo real por protocolo.
 
-**Versão:** `2.0.0`  
+**Versão:** `2.0.2`  
 **Stack:** PHP 8.2 · MySQL · Bootstrap 5 · Chart.js · PHPMailer  
 **Ambiente:** Apache (XAMPP/WAMP) · `localhost`
 
@@ -31,6 +31,7 @@
 - Recuperação de senha por e-mail com token seguro
 
 ### Para o administrador (Grêmio)
+- Página inicial exclusiva com estatísticas em tempo real e acesso rápido ao painel
 - Painel administrativo com visão geral de todas as manifestações
 - Filtros por tipo, status, período (data início/fim) e busca por texto
 - **Paginação** (10 por página) para grandes volumes
@@ -95,22 +96,37 @@ MAIL_FROM_NAME=Ouvidoria do Grêmio Escolar - EEEP Dom Walfrido
 
 **3. Importe o banco de dados**
 
-Abra o phpMyAdmin e execute:
+**Use apenas o `import_all.sql`** — ele já contém tudo: estrutura, índices e dados de teste.
+
 ```
-database/schema.sql
+database/import_all.sql
 ```
+
+Abra o phpMyAdmin → aba **Importar** → selecione o arquivo → clique em **Executar**. Pronto.
+
+> Os outros arquivos da pasta `database/` são opcionais e para situações específicas — veja a tabela abaixo.
+
+#### Guia dos arquivos SQL
+
+| Arquivo | Quando usar |
+|---------|-------------|
+| ✅ **`import_all.sql`** | **Instalação nova** — use apenas este |
+| `schema.sql` | Instalação em produção (sem dados de teste) |
+| `migrate_indexes.sql` | Banco já existente de versão anterior — adiciona índices sem recriar |
+| `fix_notificacoes.sql` | Banco com notificações gravadas por versão muito antiga |
+| `seed_dev.sql` | Já está incluso no `import_all.sql` — não precisa rodar separado |
 
 **4. Acesse no navegador**
 ```
 http://localhost/projeto_final
 ```
 
-### Credenciais padrão (do schema.sql)
+### Credenciais padrão (seed de desenvolvimento)
 
 | Perfil | E-mail | Senha |
 |--------|--------|-------|
-| Administrador | `admin@gremio.com` | `123456` |
-| Aluno teste | `aluno@gremio.com` | `123456` |
+| Administrador | `admin@gremio.com` | `123mudar` |
+| Aluno teste | `aluno@gremio.com` | `123mudar` |
 
 > ⚠️ Troque as senhas padrão imediatamente após a primeira instalação.
 
@@ -124,16 +140,16 @@ projeto_final/
 ├── .env                           ← 🔒 Credenciais reais (não commitar)
 ├── .env.example                   ← Modelo público para o .env
 ├── .gitignore
-├── index.php                      ← Página inicial
+├── index.php                      ← Página inicial (bifurcada: admin / público)
 │
 ├── app/
-│   ├── manifestacao.php           ← Envio de manifestação
+│   ├── manifestacao.php           ← Envio de manifestação (bloqueado para admin)
 │   ├── acompanhar.php             ← Consulta por protocolo
 │   ├── notificacoes.php           ← Central de notificações
 │   ├── sobre.php                  ← Sobre a escola
 │   │
 │   ├── auth/
-│   │   ├── login.php
+│   │   ├── login.php              ← Login e cadastro (com validação frontend)
 │   │   ├── logout.php
 │   │   ├── forgot_password.php
 │   │   ├── reset_password.php
@@ -165,7 +181,11 @@ projeto_final/
 │   └── manifestacoes/             ← Anexos das manifestações
 │
 └── database/
-    └── schema.sql                 ← Estrutura completa + dados iniciais
+    ├── import_all.sql             ← ✅ USE ESTE — importação completa (schema + seed)
+    ├── schema.sql                 ← Apenas estrutura, sem dados de seed (produção)
+    ├── migrate_indexes.sql        ← Bancos existentes: adiciona índices de performance
+    ├── fix_notificacoes.sql       ← Corrige links de notificações de versões antigas
+    └── seed_dev.sql               ← Dados de teste isolados (já inclusos no import_all)
 ```
 
 ---
@@ -231,13 +251,55 @@ Todo formulário `method="post"` deve incluir o token CSRF:
 - **Token de reset** gerado com `random_bytes(32)`, armazenado como `sha256`, expira em 1 hora
 - **Redefinição de senha** via transação — atualiza apenas a tabela correta (adm ou usuário)
 - **Notificações** com allowlist para o nome da coluna (previne SQL injection futuro)
+- **Exclusão de conta** exige confirmação de senha antes de executar o DELETE
+- **`debug.php`** bloqueado em 3 camadas: guarda `DEV_MODE`, `.htaccess` e `.gitignore`
 - Pasta `storage/` protegida por `.htaccess` (bloqueia execução de PHP)
 
 ---
 
 ## Changelog
 
-### v2.0.0 — atual
+### v2.0.2 — atual
+**Banco de dados / Instalação**
+- `database/import_all.sql` criado: arquivo único de importação que reúne schema completo + seed de desenvolvimento, na ordem correta com `FOREIGN_KEY_CHECKS` desativado para evitar erros de constraint — **agora basta importar um único arquivo**
+- `database/migrate_indexes.sql` corrigido: `ADD KEY` simples substituído por `DROP KEY IF EXISTS` + `ADD KEY`, tornando o script idempotente (não falha se o índice já existir)
+
+**Documentação**
+- Guia completo dos arquivos SQL com tabela explicando quando usar cada um
+- Credenciais padrão corrigidas no README (`123mudar`, não `123456`)
+- Estrutura do projeto atualizada com todos os arquivos da pasta `database/`
+
+---
+
+### v2.0.1
+**Segurança**
+- Exclusão de conta agora exige confirmação de senha (verificação no backend com `senhaConfere()`)
+- Chave do rate limiting truncada a 100 chars para evitar inserções gigantes no banco (`login:IP:email`)
+- Idem em `forgot_password.php` (chave `reset:email`)
+- Administrador redirecionado para o Painel do Grêmio ao tentar acessar `manifestacao.php` diretamente por URL
+
+**Validação**
+- Campo `nome` limitado a 80 caracteres: `maxlength="80"` no HTML + `mb_strlen` no backend (cadastro e edição de perfil)
+- Telefone validado no backend com regex antes de persistir no banco
+- Validação frontend completa no formulário de login e cadastro: o spinner/loading **só dispara após validar todos os campos** — anteriormente o botão travava mesmo com campos vazios
+
+**Performance**
+- Índices adicionados em `tbmanifest`: `idx_manifest_status`, `idx_manifest_criado`, `idx_manifest_arquivada`
+- `database/migrate_indexes.sql` criado para aplicar os índices em bancos já existentes sem precisar recriar o schema
+
+**UX / Interface**
+- Página inicial completamente bifurcada: admin vê hero de gestão com estatísticas em tempo real e acesso rápido ao Painel do Grêmio; alunos veem a página pública original
+- Menus superior e lateral: admin não vê mais "Fazer Manifestação", "Sobre a Escola" ou "Acompanhar"
+- Badge "Novo" removido do botão "Fazer Manifestação"
+- Opção "Comunidade" removida de todos os seletores de perfil (cadastro, edição de conta, formulário de manifestação) e da função `validarPerfil()` no backend
+- Formulário de exclusão de conta exibe campo de senha com instrução clara
+
+**Correções**
+- `index.php`: nome de tabela corrigido de `tbmanifestacoes` para `tbmanifest` (causava erro fatal de SQL para o admin)
+
+---
+
+### v2.0.0
 **Segurança**
 - Credenciais movidas para `.env` (sem mais hardcode em `config.php`)
 - Proteção CSRF implementada em todos os formulários POST
@@ -263,6 +325,8 @@ Todo formulário `method="post"` deve incluir o token CSRF:
 - Spinner de carregamento em todos os botões de submit
 - Mensagens de erro de autenticação unificadas e genéricas
 - Tabela `rate_limit` incluída no `schema.sql`
+
+---
 
 ### v1.5.0
 - Arquivar e excluir manifestações no painel do admin

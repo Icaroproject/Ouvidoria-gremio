@@ -101,11 +101,25 @@ function exigirLoginUsuario(): void
 
 /**
  * Verifica a senha usando apenas password_verify().
- * O fallback para texto puro foi removido — era uma vulnerabilidade crítica.
+ * IMPORTANTE: nunca aplique trim() à senha antes de chamar esta função.
+ * O bcrypt trunca senhas acima de 72 bytes — valide o tamanho máximo
+ * antes do hash (veja validarTamanhoSenha()).
  */
 function senhaConfere(string $senhaInformada, string $senhaBanco): bool
 {
     return password_verify($senhaInformada, $senhaBanco);
+}
+
+/**
+ * Valida o comprimento da senha: mínimo 8, máximo 72 caracteres (limite do bcrypt).
+ * Retorna uma string de erro ou null se válida.
+ */
+function validarTamanhoSenha(string $senha): ?string
+{
+    $len = mb_strlen($senha);
+    if ($len < 8)  return 'A senha deve ter pelo menos 8 caracteres.';
+    if ($len > 72) return 'A senha deve ter no máximo 72 caracteres.';
+    return null;
 }
 
 // ─── RATE LIMITING (login e recuperação de senha) ─────────────────────────
@@ -157,9 +171,28 @@ function limparRateLimit(PDO $pdo, string $chave): void
 
 // ─── COOKIES "LEMBRE-ME" ──────────────────────────────────────────────────
 
+/**
+ * Grava um token opaco de "lembrar-me" no banco e define o cookie.
+ * O e-mail NÃO é mais salvo em cookie — apenas um token aleatório de 32 bytes.
+ */
 function setRememberMeCookies(string $email, string $tipoAcesso): void
 {
+    $pdo    = conectarPDO();
+    $token  = bin2hex(random_bytes(32));            // token bruto — vai no cookie
+    $hash   = hash('sha256', $token);               // hash — vai no banco
     $expira = time() + (60 * 60 * 24 * 30);
+    $expiresAt = date('Y-m-d H:i:s', $expira);
+
+    // Limpa tokens antigos do mesmo e-mail/tipo antes de criar novo
+    $pdo->prepare("DELETE FROM remember_tokens WHERE email = :email AND tipo = :tipo")
+        ->execute([':email' => $email, ':tipo' => $tipoAcesso]);
+
+    // Limpa tokens expirados globalmente
+    $pdo->prepare("DELETE FROM remember_tokens WHERE expires_at < NOW()")->execute();
+
+    $pdo->prepare("INSERT INTO remember_tokens (token_hash, email, tipo, expires_at) VALUES (:h, :e, :t, :exp)")
+        ->execute([':h' => $hash, ':e' => $email, ':t' => $tipoAcesso, ':exp' => $expiresAt]);
+
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
                || (int)($_SERVER['SERVER_PORT'] ?? 80) === 443;
 
@@ -171,18 +204,53 @@ function setRememberMeCookies(string $email, string $tipoAcesso): void
         'samesite' => 'Strict',
     ];
 
-    setcookie('remember_email', $email,       $opts);
-    setcookie('remember_tipo',  $tipoAcesso,  $opts);
+    setcookie('remember_token', $token, $opts);    // apenas o token opaco
+    setcookie('remember_tipo',  $tipoAcesso, $opts);
 
     if (session_status() === PHP_SESSION_ACTIVE) {
         setcookie(session_name(), session_id(), $opts);
     }
 }
 
+/**
+ * Resolve o e-mail e tipo a partir do cookie remember_token.
+ * Retorna ['email' => ..., 'tipo' => ...] ou null se inválido/expirado.
+ */
+function resolverRememberMeCookie(): ?array
+{
+    $token = $_COOKIE['remember_token'] ?? '';
+    $tipo  = $_COOKIE['remember_tipo']  ?? '';
+    if ($token === '' || $tipo === '') return null;
+
+    try {
+        $pdo  = conectarPDO();
+        $hash = hash('sha256', $token);
+        $stmt = $pdo->prepare("SELECT email, tipo FROM remember_tokens WHERE token_hash = :h AND expires_at >= NOW() LIMIT 1");
+        $stmt->execute([':h' => $hash]);
+        $row = $stmt->fetch();
+        if (!$row) return null;
+        return ['email' => $row['email'], 'tipo' => $row['tipo']];
+    } catch (\PDOException $e) {
+        error_log('[remember_me] ' . $e->getMessage());
+        return null;
+    }
+}
+
 function clearRememberMeCookies(): void
 {
+    // Remove token do banco se existir
+    $token = $_COOKIE['remember_token'] ?? '';
+    if ($token !== '') {
+        try {
+            $pdo  = conectarPDO();
+            $hash = hash('sha256', $token);
+            $pdo->prepare("DELETE FROM remember_tokens WHERE token_hash = :h")->execute([':h' => $hash]);
+        } catch (\PDOException $e) {
+            error_log('[remember_me] ' . $e->getMessage());
+        }
+    }
     $past = ['expires' => time() - 3600, 'path' => '/', 'httponly' => true, 'samesite' => 'Strict'];
-    setcookie('remember_email', '', $past);
+    setcookie('remember_token', '', $past);
     setcookie('remember_tipo',  '', $past);
 }
 
@@ -207,6 +275,22 @@ function tipoSlugParaDescricao(string $slug): string
 function gerarProtocoloManifestacao(): string
 {
     return 'GRE-' . date('Ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+}
+
+/**
+ * Gera um protocolo único aproveitando a constraint UNIQUE do banco.
+ * Elimina a race condition de SELECT-then-INSERT: se dois processos gerarem
+ * o mesmo protocolo ao mesmo tempo, o PDOException SQLSTATE 23000 dispara
+ * e um novo protocolo é gerado automaticamente (até 5 tentativas).
+ * Retorna apenas o protocolo gerado — o INSERT real é feito pelo chamador.
+ */
+function gerarProtocoloUnico(PDO $pdo): string
+{
+    // Ainda geramos candidatos aleatórios; a unicidade real é garantida
+    // pela constraint UNIQUE(protocolo) em tbmanifest no momento do INSERT.
+    // Esta função apenas entrega um candidato com entropia suficiente.
+    // A colisão é tratada em manifestacao.php via retry no SQLSTATE 23000.
+    return gerarProtocoloManifestacao();
 }
 
 function classeStatus(string $status): string
@@ -263,6 +347,17 @@ function iconeArquivo(string $mime): string
     return 'fa-file';
 }
 
+/**
+ * Formata um CPF numérico (11 dígitos) para exibição: 000.000.000-00
+ * Seguro para usar com e() antes de renderizar em HTML.
+ */
+function formatarCPF(string $cpf): string
+{
+    $cpf = preg_replace('/\D/', '', $cpf);
+    if (strlen($cpf) !== 11) return $cpf; // devolve como veio se inválido
+    return substr($cpf, 0, 3) . '.' . substr($cpf, 3, 3) . '.' . substr($cpf, 6, 3) . '-' . substr($cpf, 9, 2);
+}
+
 function formatarTamanho(int $bytes): string
 {
     if ($bytes >= 1048576) return round($bytes / 1048576, 1) . ' MB';
@@ -298,7 +393,7 @@ function validarCPF(string $cpf): bool
  */
 function validarPerfil(string $perfil): bool
 {
-    return in_array($perfil, ['Aluno(a)', 'Responsável', 'Professor(a)', 'Servidor(a)', 'Comunidade'], true);
+    return in_array($perfil, ['Aluno(a)', 'Responsável', 'Professor(a)', 'Servidor(a)'], true);
 }
 
 function cpfJaCadastrado(PDO $pdo, string $cpf, ?int $ignorarId = null): bool
@@ -436,13 +531,18 @@ function salvarArquivosManifestacao(PDO $pdo, int $idManifest, array $files): vo
         if (str_starts_with($mimeReal, 'image/') && !@getimagesize($tmp)) continue;
 
         $nomeArquivo = 'mf_' . $idManifest . '_' . uniqid() . '.' . $ext;
+        // Sanitiza o nome original: mantém apenas chars seguros para exibição
+        $nomeOriginalSanitizado = mb_substr(
+            preg_replace('/[^\w\s.\-()]/u', '_', $files['name'][$i]),
+            0, 255
+        );
         if (move_uploaded_file($tmp, $dir . $nomeArquivo)) {
             $pdo->prepare('
                 INSERT INTO arquivos_manifest (IDmanifest, nome_original, nome_arquivo, tamanho, mime_type)
                 VALUES (:idm, :nom, :arq, :tam, :mime)
             ')->execute([
                 ':idm'  => $idManifest,
-                ':nom'  => $files['name'][$i],
+                ':nom'  => $nomeOriginalSanitizado,
                 ':arq'  => $nomeArquivo,
                 ':tam'  => $files['size'][$i],
                 ':mime' => $mimeReal,        // salva o MIME real, não o do browser
@@ -587,7 +687,7 @@ function enviarEmailRecuperacao(string $emailDestino, string $link): bool
         $mail = _criarMailer();
         $mail->addAddress($emailDestino);
         $mail->isHTML(true);
-        $mail->Subject = 'Recuperação de senha - Ouvidoria do Grêmio Escolar';
+        $mail->Subject = 'Recuperação de senha - Ouvidoria do Grêmio Escolar - ' . SCHOOL_SHORT;
 
         $linkEsc = e($link);
         $mail->Body = '
@@ -640,7 +740,7 @@ function enviarEmailProtocolo(
               <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
                 <tr><td style="background:linear-gradient(135deg,#0f4228,#1a6b40);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;color:rgba(255,255,255,0.7);font-size:12px;letter-spacing:2px;text-transform:uppercase;">OUVIDORIA DO GRÊMIO ESCOLAR</p>
-                  <h1 style="margin:0;color:#fff;font-size:26px;font-weight:900;">EEEP Dom Walfrido</h1>
+                  <h1 style="margin:0;color:#fff;font-size:26px;font-weight:900;">' . e(SCHOOL_SHORT) . '</h1>
                 </td></tr>
                 <tr><td style="padding:36px 40px 0;text-align:center;">
                   <h2 style="margin:0 0 8px;color:#0f4228;font-size:22px;">Manifestação recebida!</h2>
@@ -663,7 +763,7 @@ function enviarEmailProtocolo(
                   <a href="' . $linkEsc . '" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#e8820a,#f5a340);color:#fff;text-decoration:none;border-radius:12px;font-weight:700;font-size:15px;">Acompanhar minha manifestação</a>
                 </td></tr>
                 <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
-                  <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">EEEP Dom Walfrido Teixeira Vieira — Ouvidoria do Grêmio Escolar<br><span style="color:#d1d5db;">E-mail gerado automaticamente, não responda.</span></p>
+                  <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">' . e(SCHOOL_NAME) . ' — Ouvidoria do Grêmio Escolar<br><span style="color:#d1d5db;">E-mail gerado automaticamente, não responda.</span></p>
                 </td></tr>
               </table>
             </td></tr>
@@ -715,7 +815,7 @@ function enviarEmailStatusAtualizado(
             <tr><td align="center">
               <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
                 <tr><td style="background:linear-gradient(135deg,#0f4228,#1a6b40);padding:36px 40px;text-align:center;">
-                  <h1 style="margin:0;color:#fff;font-size:26px;font-weight:900;">EEEP Dom Walfrido</h1>
+                  <h1 style="margin:0;color:#fff;font-size:26px;font-weight:900;">' . e(SCHOOL_SHORT) . '</h1>
                 </td></tr>
                 <tr><td style="padding:36px 40px 20px;text-align:center;">
                   <div style="font-size:48px;margin-bottom:16px;">' . $icone . '</div>
@@ -736,7 +836,7 @@ function enviarEmailStatusAtualizado(
                   <a href="' . $linkEsc . '" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#e8820a,#f5a340);color:#fff;text-decoration:none;border-radius:12px;font-weight:700;font-size:15px;">Ver minha manifestação</a>
                 </td></tr>
                 <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
-                  <p style="margin:0;color:#9ca3af;font-size:12px;">EEEP Dom Walfrido Teixeira Vieira — Ouvidoria do Grêmio Escolar</p>
+                  <p style="margin:0;color:#9ca3af;font-size:12px;">' . e(SCHOOL_NAME) . ' — Ouvidoria do Grêmio Escolar</p>
                 </td></tr>
               </table>
             </td></tr>
