@@ -62,7 +62,7 @@
 
 **1. Copie a pasta para o servidor**
 ```
-htdocs/projeto_final/
+htdocs/
 ```
 
 **2. Configure as variáveis de ambiente**
@@ -80,8 +80,7 @@ DB_USER=root
 DB_PASS=
 
 # URL — altere se mudar o nome da pasta
-APP_URL=http://localhost/projeto_final
-BASE_URL=/projeto_final/
+APP_URL=http://localhost/nome da pasta
 
 # SMTP (Gmail, por exemplo)
 MAIL_HOST=smtp.gmail.com
@@ -125,7 +124,7 @@ http://localhost/projeto_final
 
 | Perfil | E-mail | Senha |
 |--------|--------|-------|
-| Administrador | `admin@gremio.com` | `123mudar` |
+| Administrador | `admin@gremio.com` | `admin123` |
 | Aluno teste | `aluno@gremio.com` | `123mudar` |
 
 > ⚠️ Troque as senhas padrão imediatamente após a primeira instalação.
